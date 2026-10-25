@@ -1,0 +1,37 @@
+name: TraceZero CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests and synthetic demo audit
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install TraceZero
+        run: python -m pip install -e .
+
+      # The private reference dataset is not available here: its corpus tests skip and say so.
+      - name: Unit tests
+        run: python -m unittest discover -s code/tests -v
+
+      - name: Synthetic demo audit
+        run: tracezero --dataset code/tests/fixtures/demo --out demo_output.csv
+
+      - name: Validate demo output (strict)
+        run: >-
+          python code/evaluation/validate_output.py --strict
+          --output demo_output.csv
+          --requests code/tests/fixtures/demo/deletion_requests.csv
