@@ -10,6 +10,9 @@ code/cache/
 venv/
 __pycache__/
 *.pyc
+*.egg-info/
+build/
+dist/
 .env
 .env.*
 # Machine-specific tool settings

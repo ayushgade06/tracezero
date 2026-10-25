@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tracezero"
+version = "0.1.0"
+description = "Deterministic, evidence-based auditing of data-deletion requests"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Ayush Gade" }]
+# Lower bounds are the engine's original requirements; upper bounds stop at the next major release,
+# because PDF text extraction and assignment output feed the byte-stable audit result.
+# Verified: pypdf 6.14.2, scipy 1.17.1 (numpy 2.4.3) on Python 3.12 and 3.13 (see docs/BASELINE.md).
+dependencies = [
+    "pypdf>=4.0,<7",
+    "scipy>=1.11,<2",
+]
+
+[project.optional-dependencies]
+# Only to regenerate the OCR cache; the 1.4.4 wheel declares python_requires <3.13.
+ocr = ["rapidocr-onnxruntime==1.4.4; python_version < '3.13'"]
+# Only for `--refresh-intent-cache` (calls Claude; needs ANTHROPIC_API_KEY).
+llm = ["anthropic>=1.0"]
+
+[project.scripts]
+tracezero = "tracezero_cli:main"
+
+[tool.setuptools]
+# Supported install: `pip install -e .` from a checkout (the engine stays in code/; see tracezero_cli.py).
+package-dir = { "" = "code" }
+py-modules = ["tracezero_cli"]
