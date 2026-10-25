@@ -1,0 +1,5 @@
+# Optional: only needed to (re)generate the OCR cache in code/cache/ocr (M6).
+# Requires Python <= 3.12 (the 1.4.4 wheel declares python_requires <3.13).
+# The wheel bundles its ONNX models; no separate download. Pulls in onnxruntime, opencv-python,
+# pyclipper, shapely, PyYAML, numpy, Pillow. Normal runs read the committed cache instead.
+rapidocr-onnxruntime==1.4.4

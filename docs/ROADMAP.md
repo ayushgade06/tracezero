@@ -1,0 +1,90 @@
+# TraceZero roadmap
+
+An incremental path from the current CLI to a maintained product with a backend API and a web interface.
+Every phase keeps the audit engine's behaviour fixed unless that phase explicitly says otherwise.
+
+**Standing guardrail (every phase).** On the reference dataset, which is kept locally and never committed,
+`python code/main.py` with both caches must still produce SHA-256
+`3e8aa75b6a771a8a8e76936fdce1f5b2b5239fcf12c431769dd94b943a969db1`, and strict validation must report 0
+errors. A deliberate change of that hash needs a recorded reason and a new baseline entry in `BASELINE.md`.
+
+> These phases are provisional. The phase list in the P0 brief was cut off, so they are proposed here and
+> should be confirmed or replaced.
+
+## P0: audit, baseline, migration (this phase, done)
+
+- The original implementation was audited, and its baseline recorded in `BASELINE.md`.
+- Source code was migrated without logic changes. Third-party data, caches and generated reports were
+  excluded.
+- README, `ARCHITECTURE.md` and this roadmap were added.
+
+## P1: make the engine self-contained and testable
+
+Goal: a fresh clone can run its full test suite and a demo audit with no external files.
+
+- Build a small synthetic fixture dataset under `code/tests/fixtures/` from the generators in
+  `evaluation/custom_cases.py`, covering each evidence format.
+- Corpus tests skip, with a clear reason, when the reference dataset is absent. Add a
+  `TRACEZERO_DATASET` environment variable so they can be pointed at it.
+- Add packaging: `pyproject.toml`, a `tracezero` console script that wraps `code/main.py` unchanged, and
+  pinned dependency ranges.
+- Add CI: unit tests and the synthetic demo on every push.
+- Choose and add a license (open decision from P0).
+
+Exit: green CI on a clean clone; the guardrail hash is unchanged.
+
+## P2: separate engine from dataset conventions
+
+Goal: an organisation can run TraceZero on its own evidence without editing code.
+
+- Load the policy from `deletion_rules.csv`, or a documented equivalent, instead of the hard-coded
+  `policy.POLICY`. A test asserts that the loaded matrix equals the current one.
+- Make the second request file optional; keep joint matching whenever several request files are given.
+- Validate input schemas up front and report clear errors for missing columns or files.
+- Move format-specific heuristics (for example, the SQL dump header key used by rule R4e, and the
+  screenshot template) behind named, documented settings that default to today's behaviour.
+
+Exit: the guardrail hash is unchanged with default settings; the fixture dataset runs with a custom policy file.
+
+## P3: library interface and structured results
+
+Goal: one function the API and UI can call, with results that explain themselves.
+
+- `audit(dataset, requests=None) -> AuditResult`, built on `pipeline.run` and `main.audit_cases`.
+- Serialise the per-request trace that `final.assemble` already returns: evaluations, blockers, citations
+  with locators, and intent readings. Do this alongside `output.csv`, not instead of it.
+- Report diagnostics (unparsed lines, ingest coverage) as structured data.
+
+Exit: the CLI is a thin wrapper over the library, and `output.csv` is byte-identical.
+
+## P4: backend API
+
+Goal: run audits over HTTP.
+
+- A minimal service: upload or point at a dataset, start an audit job, poll its status, and fetch the
+  results (CSV plus structured trace).
+- Run jobs out of process. A full run takes about 13 s in memory, so requests must not block on it.
+- Local file storage only; no database until a concrete need appears.
+- Authentication, size limits and retention of uploaded evidence, which contains personal data, are
+  designed here before any deployment.
+
+Exit: an API integration test reproduces the guardrail output.
+
+## P5: web interface
+
+Goal: reviewers can inspect a finished audit.
+
+- Job list, a per-request status table, and a step view where each citation opens the evidence locator
+  it refers to.
+- Read-only first; editing policy or requests comes later, if needed.
+
+## P6: production readiness (only when there is a deployment target)
+
+- Persistence, multi-user access control, audit logging, deployment, and monitoring.
+- Optional LLM intent refresh as an explicit, metered admin action.
+
+## Known gaps carried forward (from ARCHITECTURE.md)
+
+- Accuracy against the reference answers: status 0.875, step F1 0.907. Improvements belong in a dedicated,
+  measured change that records a new baseline.
+- In-memory, single-pass processing; scaling work waits for real input sizes.

@@ -1,0 +1,5 @@
+# Runtime dependencies.
+# pypdf: text extraction for the PDF evidence documents (M1 ingestion).
+# scipy (+numpy): global request-to-event assignment in M3 (scipy.optimize.linear_sum_assignment).
+pypdf>=4.0
+scipy>=1.11

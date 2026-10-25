@@ -1,0 +1,2 @@
+# Only for `python code/main.py --refresh-intent-cache` (fills code/cache/llm/intent.json with Claude's readings).
+anthropic>=1.0
