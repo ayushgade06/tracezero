@@ -33,7 +33,7 @@ Goal: a fresh clone can run its full test suite and a demo audit with no externa
 
 Exit: green CI on a clean clone; the guardrail hash is unchanged.
 
-Status: done, except the license, which is still awaiting the owner's decision. CI is verified locally in
+Status: done; the license is Apache-2.0. CI is verified locally in
 a `python:3.12` container but has not yet run on GitHub (see `BASELINE.md`, P1).
 
 ## P2: separate engine from dataset conventions

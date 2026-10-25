@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,9 +9,11 @@ description = "Deterministic, evidence-based auditing of data-deletion requests"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Ayush Gade" }]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 # Lower bounds are the engine's original requirements; upper bounds stop at the next major release,
 # because PDF text extraction and assignment output feed the byte-stable audit result.
-# Verified: pypdf 6.14.2, scipy 1.17.1 (numpy 2.4.3) on Python 3.12 and 3.13 (see docs/BASELINE.md).
+# Verified (docs/BASELINE.md): pypdf 6.14.2 + scipy 1.17.1 on 3.12; pypdf 6.21.2 + scipy 1.18.1 on 3.12 and 3.13.
 dependencies = [
     "pypdf>=4.0,<7",
     "scipy>=1.11,<2",

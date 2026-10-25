@@ -124,6 +124,5 @@ request, with no private data, caches, API keys or OCR engine.
 
 ## License
 
-No license yet: until the owner adds one, all rights are reserved, and TraceZero is not open source.
-Third-party dependencies are installed from PyPI under their own licenses and are not vendored here. See
-`docs/BASELINE.md` for the open licensing decision.
+TraceZero is licensed under the [Apache License 2.0](LICENSE); see also [`NOTICE`](NOTICE). Third-party
+dependencies are installed from PyPI under their own licenses and are not vendored here.

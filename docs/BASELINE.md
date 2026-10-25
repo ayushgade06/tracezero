@@ -81,7 +81,7 @@ NumPy (BSD-3-Clause, with bundled 0BSD/MIT/Zlib/CC0 parts) and the anthropic SDK
 their installed package metadata. The optional rapidocr-onnxruntime and its bundled PP-OCR models are
 Apache-2.0 according to their project pages (not installed here, so not checked locally). None requires an attribution file in this repository while they are not redistributed.
 
-**Open decision for the owner:** TraceZero has no license yet, so it is all rights reserved by default.
+**Open decision for the owner (resolved in P1: Apache-2.0):** TraceZero has no license yet, so it is all rights reserved by default.
 Choose one before publishing or accepting contributions.
 
 **Secrets.** None found. `ANTHROPIC_API_KEY` is read only from the environment by the anthropic client,
@@ -108,7 +108,8 @@ existing test assertion changed (test edits only add the dataset gate and pass t
 Not observed: an actual GitHub Actions run, because nothing was pushed. Run 20 reproduces the workflow's
 commands on the same base OS and Python minor version.
 
-**Licensing (P1.6): still open.** Git history attributes every file under `code/` to one author, but
-adding a license is a grant only the copyright holder can make. Two things need confirming first: that
-the author agrees to license it, and that the terms of the setting where the code was first written
-(not present in the original repository) don't restrict that.
+**Licensing (P1.6): resolved, Apache-2.0.** Git history attributes every file under `code/` to one author.
+The owner confirmed holding the rights, with no restricting terms from where the code was first written,
+and chose Apache-2.0. `LICENSE` is the official text from apache.org (SHA-256 `cfc7749b…523d30`, the
+canonical file). `NOTICE` carries the copyright line, and `pyproject.toml` declares `license = "Apache-2.0"`.
+It is compatible with the dependencies' licenses (BSD, Apache-2.0), none of which is vendored.
