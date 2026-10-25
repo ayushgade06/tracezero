@@ -15,7 +15,7 @@ sys.path.insert(0, str(CODE))
 from audit import ingest, parsers  # noqa: E402
 from audit.observation import Observation, parse_ts  # noqa: E402
 
-DATASET = CODE.parent / "dataset"
+from refdata import DATASET, requires_reference  # noqa: E402
 
 
 def meta(fmt, file_id="ev_t"):
@@ -197,6 +197,7 @@ class TextTests(unittest.TestCase):
         self.assertEqual(obs[0].context["snapshot"], "2026-10-01T12:00:00Z")
         self.assertEqual(diags[0]["locator"], {"line": 3})
 
+    @requires_reference
     def test_pdf_page_provenance(self):
         m = next(x for x in ingest.load_manifest(DATASET) if x["file_id"] == "evidence_58")
         obs, diags = ingest.parse_file(m, DATASET)
@@ -214,6 +215,7 @@ class TextTests(unittest.TestCase):
         self.assertEqual(diags[0]["locator"], {"page": 2})
 
 
+@requires_reference
 class CorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

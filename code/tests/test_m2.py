@@ -14,7 +14,7 @@ sys.path.insert(0, str(CODE))
 
 from audit import discovery, identity, ingest, parsers  # noqa: E402
 
-DATASET = CODE.parent / "dataset"
+from refdata import DATASET, requires_reference  # noqa: E402
 H1, H2 = "a" * 64, "b" * 64
 
 
@@ -90,6 +90,7 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual({(l.user_id, l.key_status) for l in links}, {("user_1", "valid"), ("user_2", "not_yet_valid")})
         self.assertEqual(res["account_1"]["status"], "conflicting")  # kept, not resolved
 
+    @requires_reference
     def test_real_identity_tables(self):
         idx = identity.load_identities(DATASET)
         self.assertEqual(len(idx.subjects), 850)
@@ -178,6 +179,7 @@ class LinkTests(unittest.TestCase):
         self.assertEqual((page.link_type, page.locator), ("page", {"page": 1}))
 
 
+@requires_reference
 class CorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

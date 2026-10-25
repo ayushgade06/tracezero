@@ -23,7 +23,7 @@ sys.path.insert(0, str(CODE / "tests"))
 
 from audit import ingest, ocr, policy  # noqa: E402
 
-DATASET = CODE.parent / "dataset"
+from refdata import DATASET, requires_reference  # noqa: E402
 META = {"file_id": "ev_img", "file_path": "evidence/images/x.png", "origin": "console", "captured_at": "2026-09-05T00:00:00Z", "format": "image"}
 
 
@@ -142,6 +142,7 @@ class StateGateTests(unittest.TestCase):
         self.assertEqual(state.interpret(head)[0], {"existence": "PRESENT", "exposure": "IDENTIFIABLE"})
 
 
+@requires_reference
 class CacheTests(unittest.TestCase):
     def setUp(self):
         self.meta = next(m for m in ingest.load_manifest(DATASET) if m["file_id"] == "evidence_60")
@@ -181,6 +182,7 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(ocr.run_engine(DATASET / self.meta["file_path"]), self.cached["boxes"])
 
 
+@requires_reference
 class CorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -258,8 +260,8 @@ class CorpusTests(unittest.TestCase):
 
     def test_deterministic_across_processes(self):
         script = ("import sys,json,hashlib;sys.path.insert(0,'code');from audit import ingest;"
-                  "o=[x.to_dict() for x in ingest.ingest('dataset')[1] if x.file_format=='image'];"
-                  "print(hashlib.sha256(json.dumps(o,sort_keys=True,default=str).encode()).hexdigest())")
+                  "o=[x.to_dict() for x in ingest.ingest(%r)[1] if x.file_format=='image'];"
+                  "print(hashlib.sha256(json.dumps(o,sort_keys=True,default=str).encode()).hexdigest())") % str(DATASET)
         out = {subprocess.run([sys.executable, "-c", script], cwd=CODE.parent, capture_output=True, text=True, check=True,
                               env=dict(os.environ, PYTHONHASHSEED=s)).stdout for s in ("5", "6")}
         self.assertEqual(len(out), 1)

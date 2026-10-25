@@ -15,7 +15,7 @@ sys.path.insert(0, str(CODE))
 from audit import discovery, identity, ingest, matching, parsers, state  # noqa: E402
 from audit.matching import Event  # noqa: E402
 
-DATASET = CODE.parent / "dataset"
+from refdata import DATASET, requires_reference  # noqa: E402
 DELETE = "Please permanently delete the account associated with this email address."
 REQ = ("2026-09-01T00:00:00Z", "2026-09-03T12:00:00Z", "2026-09-10T00:00:00Z")  # requested, reported, audit
 
@@ -354,6 +354,7 @@ class OwnershipTests(unittest.TestCase):
         self.assertTrue(all(a.association["attribution"] == "UNATTRIBUTED_ALTERNATIVE" and not a.association["attributed_to_requester"] for a in alts))
 
 
+@requires_reference
 class CorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -405,7 +406,7 @@ class CorpusTests(unittest.TestCase):
         for seed in ("1", "2"):
             with tempfile.TemporaryDirectory() as d:
                 out = Path(d) / "a.json"
-                subprocess.run([sys.executable, str(CODE / "evaluation" / "state_report.py"), "--json", str(out)],
+                subprocess.run([sys.executable, str(CODE / "evaluation" / "state_report.py"), "--dataset", str(DATASET), "--json", str(out)],
                                env=dict(os.environ, PYTHONHASHSEED=seed, PYTHONIOENCODING="utf-8"),
                                check=True, capture_output=True)
                 digests.add(hashlib.sha256(out.read_bytes()).hexdigest())

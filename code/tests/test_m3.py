@@ -15,7 +15,7 @@ sys.path.insert(0, str(CODE))
 from audit import discovery, identity, ingest, matching, parsers  # noqa: E402
 from audit.matching import Event  # noqa: E402
 
-DATASET = CODE.parent / "dataset"
+from refdata import DATASET, requires_reference  # noqa: E402
 DELETE = "Please permanently delete the account associated with this email address."
 
 
@@ -184,6 +184,7 @@ class MatchTests(unittest.TestCase):
         self.assertEqual((dec["case_1"].family, dec["case_1"].activity_id), ("request_classification", "activity_2"))
 
 
+@requires_reference
 class CorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

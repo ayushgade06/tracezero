@@ -17,7 +17,7 @@ from audit import ocr, policy, state  # noqa: E402
 import test_m4 as m4  # noqa: E402
 import test_m5 as m5  # noqa: E402
 
-DATASET = CODE.parent / "dataset"
+from refdata import DATASET, requires_reference  # noqa: E402
 REQUESTED = "2026-09-01T00:00:00Z"  # test_m4.REQ: requested 09-01, audit 09-10 -> conflict window from 07-03
 
 
@@ -158,6 +158,7 @@ class CaptureTimeTests(unittest.TestCase):
             self.assertEqual(ocr._capture_disputes([unit(attrs)], cap), [], attrs)
 
 
+@requires_reference
 class CorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

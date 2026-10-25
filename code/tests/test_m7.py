@@ -25,7 +25,7 @@ import main  # noqa: E402
 import test_m5 as m5  # noqa: E402
 import validate_output  # noqa: E402
 
-DATASET = CODE.parent / "dataset"
+from refdata import DATASET, requires_reference  # noqa: E402
 AT = m5.aspect
 
 
@@ -219,6 +219,7 @@ class EvaluationRunnerTests(unittest.TestCase):
         self.assertEqual([r["name"] for r in results if not r["passed"]], [])
 
 
+@requires_reference
 class CorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -304,7 +305,7 @@ class CorpusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             for seed in ("1", "2"):
                 out = Path(d) / f"out_{seed}.csv"
-                subprocess.run([sys.executable, str(CODE / "main.py"), "--out", str(out)], check=True, capture_output=True,
+                subprocess.run([sys.executable, str(CODE / "main.py"), "--dataset", str(DATASET), "--out", str(out)], check=True, capture_output=True,
                                env=dict(os.environ, PYTHONHASHSEED=seed, PYTHONDONTWRITEBYTECODE="1"))
                 digests.add(hashlib.sha256(out.read_bytes()).hexdigest())
         digests.add(hashlib.sha256(self.out.read_bytes()).hexdigest())  # and the in-process run above

@@ -14,6 +14,7 @@ sys.path.insert(0, str(CODE / "evaluation"))
 sys.path.insert(0, str(CODE / "tests"))
 
 from audit import policy, state  # noqa: E402
+from refdata import DATASET, requires_reference  # noqa: E402
 
 AUDIT = "2026-09-10T00:00:00Z"
 
@@ -254,11 +255,12 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual((E[0].outcome, E[0].reason, F), ("INCONCLUSIVE", "STATE_UNKNOWN:POST_AUDIT_EVIDENCE_ONLY", []))
 
 
+@requires_reference
 class CorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         import policy_report
-        cls.manifest, cls.A, cls.E, cls.F, cls.R = policy_report.run(CODE.parent / "dataset")
+        cls.manifest, cls.A, cls.E, cls.F, cls.R = policy_report.run(DATASET)
         cls.report = policy_report
 
     def test_invariants_hold(self):
@@ -286,7 +288,7 @@ class CorpusTests(unittest.TestCase):
         for seed in ("3", "4"):
             with tempfile.TemporaryDirectory() as d:
                 out = Path(d) / "e.json"
-                subprocess.run([sys.executable, str(CODE / "evaluation" / "policy_report.py"), "--json", str(out)],
+                subprocess.run([sys.executable, str(CODE / "evaluation" / "policy_report.py"), "--dataset", str(DATASET), "--json", str(out)],
                                env=dict(os.environ, PYTHONHASHSEED=seed, PYTHONIOENCODING="utf-8"), check=True, capture_output=True)
                 digests.add(hashlib.sha256(out.read_bytes()).hexdigest())
         self.assertEqual(len(digests), 1)

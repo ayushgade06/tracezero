@@ -19,7 +19,7 @@ import main  # noqa: E402
 import validate_output  # noqa: E402
 from audit import intent  # noqa: E402
 
-DATASET = CODE.parent / "dataset"
+from refdata import DATASET, requires_reference  # noqa: E402
 REQUESTS = DATASET / "deletion_requests.csv"
 SAMPLE_REQUESTS = DATASET / "sample_deletion_requests.csv"
 SAMPLE_OUTPUT = DATASET / "sample_output.csv"
@@ -36,6 +36,7 @@ def write_rows(rows, path):
 
 
 class IntentTests(unittest.TestCase):
+    @requires_reference
     def test_dataset_intents(self):
         with open(REQUESTS, encoding="utf-8") as f:
             labels = {r["case_id"]: intent.classify(r["request_text"]) for r in csv.DictReader(f)}
@@ -43,6 +44,7 @@ class IntentTests(unittest.TestCase):
         self.assertEqual(non_deletion, {f"case_{n}" for n in range(533, 543)})
         self.assertNotIn(intent.AMBIGUOUS, labels.values())
 
+    @requires_reference
     def test_no_sample_becomes_not_applicable(self):
         # All 32 samples are deletion cases. Follow-up wording (case_26 "confirm the profile is gone",
         # case_32 "keep only the reference ... remove the rest") is AMBIGUOUS and must still be audited.
@@ -68,6 +70,7 @@ class IntentTests(unittest.TestCase):
             self.assertEqual(intent.classify(text), want, text)
 
 
+@requires_reference
 class ValidatorTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -177,6 +180,7 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(self.errors(rows), [])
 
 
+@requires_reference
 class PipelineTests(unittest.TestCase):
     def test_output_valid_and_deterministic(self):
         # M7: the CLI now writes the full audit; it must stay strictly valid and byte-stable
@@ -187,7 +191,7 @@ class PipelineTests(unittest.TestCase):
                 with io.StringIO() as buf:
                     stdout, sys.stdout = sys.stdout, buf
                     try:
-                        main.main(["--out", str(out)])
+                        main.main(["--dataset", str(DATASET), "--out", str(out)])
                     finally:
                         sys.stdout = stdout
                 hashes.append(hashlib.sha256(out.read_bytes()).hexdigest())
