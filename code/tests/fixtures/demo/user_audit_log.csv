@@ -1,0 +1,2 @@
+audit_id,user_id,event_time,field_name,old_value,new_value
+audit_9001,user_9002,2026-03-01T00:00:00Z,email,t.reyes@example.com,tomas.reyes@example.net

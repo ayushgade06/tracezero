@@ -1,0 +1,3 @@
+# Fixture bytes must not change on checkout (the PDF xref uses byte offsets)
+*.pdf binary
+code/tests/fixtures/** -text

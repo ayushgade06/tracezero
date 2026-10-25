@@ -1,0 +1,4 @@
+activity_id,event_time,event_type,source_system,target_system,resource_id,reported_result,details
+activity_9001,2026-01-15T00:00:00Z,LINK_RESOURCE_IDENTITY,data_catalog,account_service,account_9104,SUCCESS,Data catalog linked account_9104 (account_9104) to noor.patel@example.net and user_9004.
+activity_9002,2026-09-02T00:00:00Z,DELETE_RECORD,account_service,account_service,account_9101,SUCCESS,Deletion worker removed account_9101.
+activity_9003,2026-09-02T06:00:00Z,CLASSIFY_REQUEST,privacy_intake,privacy_case_management,account_9104,SUCCESS,Privacy intake classified request for account_9104 as non-deletion; no destructive action was authorized.

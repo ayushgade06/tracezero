@@ -1,0 +1,3 @@
+2026-08-20T10:00:00Z level=INFO service=account_service trace_id=tr-9003 event=profile_lookup_completed resource_id=account_9103 lookup_key=ines.calder@example.org rows=1 http_status=200
+2026-09-07T09:00:00Z level=DEBUG service=integration_service trace_id=tr-9001 event=connector_config_read_started resource_id=data_flow_9101 lookup_key=mira.holt@example.org
+2026-09-07T09:00:01Z level=INFO service=integration_service trace_id=tr-9001 event=connector_config_read_completed resource_id=data_flow_9101 record_type=DATA_FLOW enabled=true connector_name=demo_crm_bridge customer_email=mira.holt@example.org

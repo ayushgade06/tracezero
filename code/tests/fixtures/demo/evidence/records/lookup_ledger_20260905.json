@@ -1,0 +1,8 @@
+{
+  "records": [
+    {"recorded_at": "2026-09-05T00:00:00Z", "system": "account_service", "resource_id": "account_9101",
+     "record_type": "USER_PROFILE", "result": "NOT_FOUND", "subject_reference": "mira.holt@example.org"},
+    {"recorded_at": "2026-09-05T00:00:00Z", "system": "backup_service", "resource_id": "backup_9101",
+     "record_type": "BACKUP_ARCHIVE", "result": "ACTIVE", "subject_reference": "mira.holt@example.org"}
+  ]
+}
