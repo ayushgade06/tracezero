@@ -33,6 +33,9 @@ Goal: a fresh clone can run its full test suite and a demo audit with no externa
 
 Exit: green CI on a clean clone; the guardrail hash is unchanged.
 
+Status: done, except the license, which is still awaiting the owner's decision. CI is verified locally in
+a `python:3.12` container but has not yet run on GitHub (see `BASELINE.md`, P1).
+
 ## P2: separate engine from dataset conventions
 
 Goal: an organisation can run TraceZero on its own evidence without editing code.
@@ -40,6 +43,8 @@ Goal: an organisation can run TraceZero on its own evidence without editing code
 - Load the policy from `deletion_rules.csv`, or a documented equivalent, instead of the hard-coded
   `policy.POLICY`. A test asserts that the loaded matrix equals the current one.
 - Make the second request file optional; keep joint matching whenever several request files are given.
+- Resolve default paths (`./dataset`, `./output.csv`, `code/cache/`) from the working directory or settings
+  instead of source-file locations. Found in P1: this is what currently limits installs to editable mode.
 - Validate input schemas up front and report clear errors for missing columns or files.
 - Move format-specific heuristics (for example, the SQL dump header key used by rule R4e, and the
   screenshot template) behind named, documented settings that default to today's behaviour.

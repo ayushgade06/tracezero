@@ -86,3 +86,29 @@ Choose one before publishing or accepting contributions.
 
 **Secrets.** None found. `ANTHROPIC_API_KEY` is read only from the environment by the anthropic client,
 and `.env` / `.env.*` are git-ignored.
+
+## P1 verification (2026-10-26)
+
+Audit engine unchanged: no file under `code/audit/` and no line of `code/main.py` changed in P1, and no
+existing test assertion changed (test edits only add the dataset gate and pass the dataset path explicitly).
+
+| # | Setup | Command | Result |
+|---|---|---|---|
+| 11 | Repository, no dataset, no caches, no env | `python -m unittest discover -s code/tests` | PASS: 187 tests, 53 skipped (`reference dataset not available; set TRACEZERO_DATASET=…`). Every test that passed in run 10 still passes |
+| 12 | Same, `TRACEZERO_DATASET=/d/nope` | same | FAIL by design: the 15 gated tests and classes report `TRACEZERO_DATASET='D:/nope' is unusable; missing: …`; no fallback |
+| 13 | Scratch copy plus both caches, `TRACEZERO_DATASET=<copy of reference dataset>`, no `./dataset` | same | PASS: 187 tests, 1 skipped (live OCR engine not installed) |
+| 14 | Scratch copy plus caches and `./dataset`, no env | same | PASS: 187 tests, 1 skipped |
+| 15 | Setup 14 | `python code/main.py`; `validate_output.py --strict` | SHA-256 `3e8aa75b…969db1` (unchanged); 0 errors, 1 warning (`case_61`) |
+| 16 | Clean venv, Python 3.12.6, `pip install -e .` from a fresh clone | install; `tracezero …` | Resolved pypdf 6.21.2, scipy 1.18.1, numpy 2.5.4 (newer than the baseline's). `tracezero` matches `python code/main.py` byte for byte on the demo; exit codes match (0 ok, 2 bad argument, 1 missing dataset) |
+| 17 | Setup 16 plus caches and dataset | `python code/main.py` and `tracezero` | Both SHA-256 `3e8aa75b…969db1`; suite 187 tests, 1 skipped |
+| 18 | Clean venv, Python 3.13.7, `pip install -e .` | suite; demo; reference run via `tracezero --dataset` | Suite 187 tests, 53 skipped; demo byte-identical to 3.12; reference SHA-256 `3e8aa75b…969db1` |
+| 19 | Clean venv, non-editable `pip install <clone>` | `tracezero --help` | Exits 1: `engine sources not found …; install from a source checkout with pip install -e .` |
+| 20 | Docker `python:3.12` (3.12.15, Linux), fresh clone of HEAD | the CI workflow's steps | Install OK; 187 tests, 53 skipped; demo audit and strict validation PASS (0 errors, 0 warnings); demo output byte-identical to Windows (`699d7cec…`) |
+
+Not observed: an actual GitHub Actions run, because nothing was pushed. Run 20 reproduces the workflow's
+commands on the same base OS and Python minor version.
+
+**Licensing (P1.6): still open.** Git history attributes every file under `code/` to one author, but
+adding a license is a grant only the copyright holder can make. Two things need confirming first: that
+the author agrees to license it, and that the terms of the setting where the code was first written
+(not present in the original repository) don't restrict that.

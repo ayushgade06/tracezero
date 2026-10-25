@@ -25,65 +25,105 @@ currently a command-line tool; there is no API or web interface yet (see [`docs/
 
 ## Requirements
 
-- Python 3.10+ (baseline verified on 3.12.6)
-- `pypdf` and `scipy` (`code/requirements.txt`)
-- Optional: `anthropic`, only to refresh intent readings (`code/requirements-llm.txt`)
-- Optional: `rapidocr-onnxruntime`, only to regenerate the OCR cache, Python 3.12 or older (`code/requirements-ocr.txt`)
+- Python 3.10+. Verified on 3.12 (Windows and Linux) and 3.13 (Windows); 3.10 and 3.11 are only
+  syntax-checked.
+- Runtime: `pypdf` and `scipy`, installed automatically.
+- Optional extras: `ocr` (`rapidocr-onnxruntime`, Python 3.12 or older), only to regenerate the OCR cache;
+  `llm` (`anthropic`), only to refresh intent readings.
+
+## Install
+
+Install from a source checkout, in a virtual environment:
+
+```bash
+git clone https://github.com/ayushgade06/tracezero.git && cd tracezero
+python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
+python -m pip install -e .                        # add [ocr] or [llm] for the optional extras
+```
+
+The install is editable on purpose. The engine resolves its defaults (`./dataset`, `./output.csv`,
+`code/cache/`) from its own location in the checkout, and `tracezero` stops with an explicit message if it
+is installed any other way. Without installing, `python -m pip install -r code/requirements.txt` and
+`python code/main.py` work exactly as before.
+
+## Run
+
+```bash
+tracezero --dataset <dataset-dir> --out output.csv          # same as: python code/main.py ...
+python code/evaluation/validate_output.py --strict --output output.csv --requests <dataset-dir>/deletion_requests.csv
+```
+
+Options: `[--dataset DIR] [--requests CSV] [--out CSV] [--refresh-intent-cache]`. The defaults are
+`./dataset` and `./output.csv` at the repository root. On Windows, set `PYTHONIOENCODING=utf-8` if the
+console mangles non-ASCII output.
+
+### Synthetic demo
+
+A small, fictional dataset lives in [`code/tests/fixtures/demo`](code/tests/fixtures/demo/README.md). It
+covers residual data, a proven deletion, insufficient evidence and a non-deletion request:
+
+```bash
+tracezero --dataset code/tests/fixtures/demo --out demo_output.csv
+python code/evaluation/validate_output.py --strict --output demo_output.csv --requests code/tests/fixtures/demo/deletion_requests.csv
+```
 
 ## Input dataset
 
-TraceZero does not ship evidence data. Point it at a dataset directory (default: `./dataset`, which is
-git-ignored) containing:
+TraceZero does not ship evidence data. A dataset directory contains:
 
 | File | Contents |
 |---|---|
 | `deletion_requests.csv` | `case_id, email, requested_at, reported_status, reported_at, audit_at, request_text` |
-| `sample_deletion_requests.csv` | Same schema; read on every run because requests are matched jointly |
+| `sample_deletion_requests.csv` | Same schema; always read, because requests are matched jointly (it may contain only the header) |
 | `evidence_files.csv` | Evidence manifest: `file_id, file_path, origin, captured_at` |
-| `evidence/…` | The evidence files the manifest names (`.sql`, `.json`, `.log`, `.txt`, `.pdf`, `.png`) |
+| `evidence/…` | The files the manifest names (`.sql`, `.json`, `.log`, `.txt`, `.pdf`, `.png`) |
 | `user_identities.csv` | Current identity snapshot: `user_id, name, email, phone, email_hash, updated_at` |
 | `user_audit_log.csv` | Identifier history: `audit_id, user_id, event_time, field_name, old_value, new_value` |
 | `system_activity.csv` | Workflow activity events: `activity_id, event_time, event_type, source_system, target_system, resource_id, reported_result, details` |
 
-`sample_output.csv` (reference answers) is used only by the evaluation runner.
+`sample_output.csv` (reference answers) is read only by the evaluation runner and the reference tests.
 
-## Usage
-
-```bash
-python -m pip install -r code/requirements.txt
-python code/main.py --dataset <dataset-dir> --out output.csv
-python code/evaluation/validate_output.py --output output.csv --requests <dataset-dir>/deletion_requests.csv --strict
-python code/evaluation/main.py --dataset <dataset-dir> --output output.csv   # needs sample_output.csv
-python -m unittest discover -s code/tests                                    # see note below
-```
-
-Options: `python code/main.py [--dataset DIR] [--requests CSV] [--out CSV] [--refresh-intent-cache]`.
-
-On Windows use `python` or `py`, and set `PYTHONIOENCODING=utf-8` if the console mangles non-ASCII output.
-
-**Caches.** Screenshot evidence is read from an OCR cache in `code/cache/ocr/`, and Claude's intent readings
-from `code/cache/llm/intent.json`. Both are derived from a specific dataset, so they are git-ignored and not
-shipped. Without them, screenshots contribute no observations and intent uses the rule reader only. To
-build them for your dataset:
+**Caches and optional OCR.** Screenshot evidence is read from an OCR cache in `code/cache/ocr/`, and Claude's
+intent readings from `code/cache/llm/intent.json`. Both are derived from a specific dataset, so they are
+git-ignored and not shipped. Without a cache entry, a screenshot contributes no observations unless the OCR
+engine is installed, and intent falls back to the rule reader. To build the caches for your dataset:
 
 ```bash
-python -m pip install -r code/requirements-ocr.txt && python code/evaluation/ocr_report.py --dataset <dataset-dir> --refresh-ocr
-python -m pip install -r code/requirements-llm.txt
+python -m pip install -e ".[ocr]" && python code/evaluation/ocr_report.py --dataset <dataset-dir> --refresh-ocr
+python -m pip install -e ".[llm]"
 export ANTHROPIC_API_KEY=...   # PowerShell: $env:ANTHROPIC_API_KEY = "..."
-python code/main.py --dataset <dataset-dir> --refresh-intent-cache
+tracezero --dataset <dataset-dir> --refresh-intent-cache
 ```
 
-**Tests.** 140 of the 180 tests run without a dataset (119 pass). The corpus tests read `./dataset` and
-error when it is absent. Results are recorded in [`docs/BASELINE.md`](docs/BASELINE.md).
+## Tests
+
+```bash
+python -m unittest discover -s code/tests
+```
+
+A clean checkout needs no private data: 187 tests, of which 134 run (synthetic data, including the
+end-to-end demo tests in `test_fixture_demo.py`) and 53 skip with the reason `reference dataset not
+available`.
+
+The skipped corpus tests run against the private reference dataset. Put it at `./dataset`, or point
+`TRACEZERO_DATASET` at its root (the directory holding `deletion_requests.csv`, `sample_output.csv`,
+`evidence_files.csv` and `evidence/`). Both caches must also be present in `code/cache/`, because the
+recorded expectations depend on them. If `TRACEZERO_DATASET` is set but files are missing, those tests
+fail and list the missing paths; they never fall back to another location. With everything present, all
+187 run and only the live-OCR test skips when the engine isn't installed.
+
+CI (`.github/workflows/ci.yml`) runs the tests and the strictly validated demo audit on every push and pull
+request, with no private data, caches, API keys or OCR engine.
 
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): modules and the execution flow from evidence to output
 - [`code/DESIGN.md`](code/DESIGN.md): per-stage rules and recorded design decisions
-- [`docs/BASELINE.md`](docs/BASELINE.md): baseline commands and their recorded results
-- [`docs/ROADMAP.md`](docs/ROADMAP.md): incremental migration plan
+- [`docs/BASELINE.md`](docs/BASELINE.md): verification commands and their recorded results
+- [`docs/ROADMAP.md`](docs/ROADMAP.md): incremental plan
 
 ## License
 
-No license has been chosen yet; until one is added, all rights are reserved by the author. Third-party
-dependencies are installed from PyPI under their own licenses and are not vendored here.
+No license yet: until the owner adds one, all rights are reserved, and TraceZero is not open source.
+Third-party dependencies are installed from PyPI under their own licenses and are not vendored here. See
+`docs/BASELINE.md` for the open licensing decision.

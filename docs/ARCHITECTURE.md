@@ -95,11 +95,14 @@ Verified in the code during the P0 audit:
 - **Format-specific heuristics.** Rule R4e in `state.py:461` keys on a context field produced by one
   specific SQL dump header. The OCR layout parser assumes one admin-console screenshot template, and the
   log parser recognises five line formats.
-- **Tests require the reference dataset.** Corpus tests read `./dataset` and error when it is absent
-  (20 errors; see `docs/BASELINE.md`).
+- **Corpus tests need the private reference dataset.** They run when it's at `./dataset` or
+  `TRACEZERO_DATASET`, with both caches, and skip otherwise (`code/tests/refdata.py`). A synthetic demo dataset
+  (`code/tests/fixtures/demo`) exercises the full pipeline without it.
 - **Caches are dataset-specific.** Without `code/cache/ocr`, screenshots produce no observations.
-- **No packaging.** `audit` is imported through `sys.path` from `code/`. There is no `pyproject.toml`,
-  pinned lockfile, CI or linting.
+- **Checkout-only install.** `pyproject.toml` installs only the `tracezero` wrapper
+  (`code/tracezero_cli.py`), which runs `code/main.py` from the checkout. Defaults are resolved from file
+  locations, so only editable installs are supported. There is no lockfile or linting; CI runs the tests and
+  the demo.
 - **Single-shot batch.** The whole corpus is processed in memory in one pass (about 13 s for 518 requests and
   94 evidence files). There is no incremental or per-request API.
 - **Known accuracy gaps** against the reference answers: status accuracy 0.875 and step F1 0.907 on 32
