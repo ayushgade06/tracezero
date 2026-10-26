@@ -94,16 +94,22 @@ def coverage(dataset, manifest, observations):
     """Every resource-like id in a file's raw text must be represented by an observation of
     that file (as resource_id or related_resource_ids); otherwise it is listed as unresolved
     with its line number. Other id-like tokens (not user_*, not resource prefixes) are listed
-    separately so nothing is skipped silently."""
+    separately so nothing is skipped silently. A file whose text cannot be read (missing, not UTF-8,
+    broken PDF; already a parse_file diagnostic) is listed under "unreadable" instead of stopping the audit."""
     represented = {}
     for o in observations:
         s = represented.setdefault(o.file_id, set())
         if o.resource_id:
             s.add(o.resource_id)
         s.update(o.related_resource_ids)
-    report = {"files": 0, "tokens": 0, "represented": 0, "unresolved": [], "other_id_tokens": Counter(), "other_examples": {}}
+    report = {"files": 0, "tokens": 0, "represented": 0, "unresolved": [], "other_id_tokens": Counter(), "other_examples": {},
+              "unreadable": []}
     for meta in manifest:
-        text = raw_text(meta, dataset)
+        try:
+            text = raw_text(meta, dataset)
+        except Exception:  # noqa: BLE001 - the reason is already in the file's parse_file diagnostic
+            report["unreadable"].append(meta["file_id"])
+            continue
         if text is None:
             continue
         report["files"] += 1

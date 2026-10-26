@@ -66,6 +66,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from audit.inputs import InputError
 from audit.matching import _ts
 from audit.observation import leaves
 from audit.state import _iso
@@ -78,7 +79,7 @@ POLICY_COLUMNS = ("rule_id", "data_category", "required_action")  # required
 POLICY_OPTIONAL_COLUMNS = ("condition", "source", "assumed_condition")  # condition is documentation only
 
 
-class PolicyError(ValueError):
+class PolicyError(InputError):
     """The policy file cannot be used; the message names the file and every problem row or field."""
 
 

@@ -15,12 +15,13 @@ import re
 from dataclasses import dataclass, fields
 from pathlib import Path
 
+from audit.inputs import InputError
 from audit.parsers import _snake
 
 _HEADER_LABEL = re.compile(r"[A-Za-z][A-Za-z _]{0,40}")  # what parsers.parse_sql accepts as a header label
 
 
-class SettingsError(ValueError):
+class SettingsError(InputError):
     """The settings file cannot be used; the message names the file and every problem."""
 
 
