@@ -322,9 +322,16 @@ class Handler(BaseHTTPRequestHandler):
     do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = _dispatch
 
 
+class Server(ThreadingHTTPServer):
+    # On Windows, SO_REUSEADDR (http.server's default) lets a second server bind a port that is already in use:
+    # it starts without error and never receives a request. Elsewhere it only skips TIME_WAIT, which is harmless.
+    allow_reuse_address = sys.platform != "win32"
+
+
 def make_server(config, run=None):
-    """-> a ThreadingHTTPServer bound to config.host:config.port, with its Jobs as server.jobs."""
-    server = ThreadingHTTPServer((config.host, config.port), Handler)
+    """-> a ThreadingHTTPServer bound to config.host:config.port, with its Jobs as server.jobs. Raises OSError
+    if the port is in use."""
+    server = Server((config.host, config.port), Handler)
     server.jobs = Jobs(config.datasets, config.workers, config.max_pending, run)
     return server
 
@@ -335,7 +342,10 @@ def main(env=os.environ):
         config = Config.from_env(env)
     except ConfigError as e:
         raise SystemExit(f"invalid configuration: {e}")
-    server = make_server(config)
+    try:
+        server = make_server(config)
+    except OSError as e:  # typically another server (perhaps another TraceZero API) already has the port
+        raise SystemExit(f"cannot listen on {config.host}:{config.port}: {e.strerror or e}")
     host, port = server.server_address[:2]
     if config.host not in ("127.0.0.1", "localhost"):
         log.warning("listening on %s: reachable from other machines, with no authentication", config.host)

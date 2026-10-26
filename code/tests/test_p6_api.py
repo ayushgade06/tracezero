@@ -181,6 +181,11 @@ class HttpLayerTests(unittest.TestCase):
         status, body = self.raw(b"POST /audits HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: \xb2\r\n\r\n")
         self.assertEqual((status, body["error"]["code"]), (400, "invalid_request"))
 
+    def test_port_in_use_fails_to_start(self):
+        # On Windows the stdlib default (SO_REUSEADDR) let a second server "start" on this port and receive nothing.
+        with self.assertRaises(OSError):
+            api.make_server(api.Config(DEMO.parent.resolve(), "127.0.0.1", self.port)).server_close()
+
     def test_stalled_client_is_disconnected(self):
         with mock.patch.object(api.Handler, "timeout", 0.2):
             # Headers promise a body that never comes; the server drops the connection instead of waiting forever.
