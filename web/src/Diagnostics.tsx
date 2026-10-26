@@ -1,14 +1,17 @@
 import type { AuditResult, ParserDiagnostic } from "./types";
 import { KV, None, Status } from "./ui";
 
+const FORMAT: Record<string, string> = { sql: "Database export", json: "JSON export", log: "Log file", txt: "Text file", pdf: "PDF document", image: "Screenshot" };
+
 const SEVERITIES = ["error", "warning", "info"];
 const SEVERITY_LABEL: Record<string, string> = { error: "Errors", warning: "Warnings", info: "Information" };
+const SEVERITY_TONE: Record<string, "bad" | "warn" | "neutral"> = { error: "bad", warning: "warn", info: "neutral" };
 
 function ParserGroup({ severity, rows }: { severity: string; rows: ParserDiagnostic[] }) {
   return (
     <section aria-labelledby={`h-sev-${severity}`}>
       <h3 id={`h-sev-${severity}`}>
-        <Status value={severity}>{SEVERITY_LABEL[severity] ?? severity}</Status>
+        <Status value={severity} t={SEVERITY_TONE[severity]}>{SEVERITY_LABEL[severity] ?? severity}</Status>
         <span className="count">({rows.length})</span>
       </h3>
       <div className="table-wrap">
@@ -35,25 +38,41 @@ export default function Diagnostics({ result }: { result: AuditResult }) {
   const { files, parser, coverage } = result.diagnostics;
   const severities = [...SEVERITIES, ...new Set(parser.map((d) => d.severity).filter((s) => !SEVERITIES.includes(s)))];
   const others = Object.entries(coverage.other_id_tokens ?? {});
+  const withIssues = files.filter((f) => f.diagnostics > 0).length;
+  const unused = coverage.unresolved.length;
   return (
     <div className="stack" style={{ gap: 32 }}>
-      <p className="muted" style={{ maxWidth: "80ch" }}>
-        These are reports about reading the evidence files, not audit findings. A parser error means a file (or part of it)
-        contributed no observations; it does not mean the data was deleted. Findings are on the request pages.
-      </p>
+      <div className="card card-pad stack" style={{ gap: 12 }}>
+        <h2 style={{ fontSize: "var(--fs-lg)" }}>
+          TraceZero read {files.length} evidence {files.length === 1 ? "file" : "files"}.
+        </h2>
+        <div className="stat-line">
+          {withIssues
+            ? <Status value="warning" t="warn">{withIssues} {withIssues === 1 ? "file" : "files"} had reading issues</Status>
+            : <Status value="ok" t="ok">Every file was read without issues</Status>}
+          {coverage.unreadable.length > 0 && <Status value="error" t="bad">{coverage.unreadable.length} could not be read</Status>}
+          {unused
+            ? <Status value="warning" t="warn">{unused} {unused === 1 ? "id" : "ids"} in the files couldn't be used</Status>
+            : <Status value="ok" t="ok">Every id found in the files was used</Status>}
+        </div>
+        <p className="muted small" style={{ maxWidth: "80ch" }}>
+          These are reports about reading the evidence files, not audit findings. A reading issue means a file (or part of it)
+          gave no information; it does not mean the data was deleted. Findings are on the request pages.
+        </p>
+      </div>
 
-      <section aria-labelledby="h-files">
-        <h3 id="h-files">Evidence files <span className="count">({files.length}, from evidence_files.csv)</span></h3>
+      <section aria-labelledby="h-files" className="stack" style={{ gap: 8 }}>
+        <h3 id="h-files">Evidence files <span className="count faint small" style={{ fontWeight: 400 }}>({files.length}, from evidence_files.csv)</span></h3>
         {files.length ? (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>File</th><th>Path</th><th>Format</th><th className="num">Observations</th><th className="num">Diagnostics</th></tr></thead>
+              <thead><tr><th>File</th><th>Path</th><th>Type</th><th className="num">Facts found</th><th className="num">Issues</th></tr></thead>
               <tbody>
                 {files.map((f) => (
                   <tr key={f.file_id}>
                     <td className="mono">{f.file_id}</td>
                     <td className="mono" style={{ overflowWrap: "anywhere" }}>{f.file_path}</td>
-                    <td className="mono">{f.format}</td>
+                    <td>{FORMAT[f.format] ?? f.format}</td>
                     <td className="num">{f.observations}</td>
                     <td className={`num${f.diagnostics ? " tone-warn" : ""}`}>{f.diagnostics}</td>
                   </tr>
@@ -65,13 +84,16 @@ export default function Diagnostics({ result }: { result: AuditResult }) {
       </section>
 
       <div className="stack" style={{ gap: 24 }}>
-        <h2 style={{ fontSize: "var(--fs-section)" }}>Parser diagnostics <span className="faint" style={{ fontWeight: 400 }}>({parser.length})</span></h2>
+        <h3>Reading issues <span className="faint small" style={{ fontWeight: 400 }}>({parser.length})</span></h3>
         {parser.length ? severities.map((s) => {
           const rows = parser.filter((d) => d.severity === s);
           return rows.length ? <ParserGroup key={s} severity={s} rows={rows} /> : null;
         }) : <None>The parsers reported nothing: no unparsed lines, missing files, unsupported formats or parser errors.</None>}
       </div>
 
+      <details className="tech card card-pad">
+      <summary>Technical details: ingest coverage</summary>
+      <div className="tech-block">
       <section aria-labelledby="h-cov">
         <h3 id="h-cov">Ingest coverage</h3>
         <dl className="facts">
@@ -126,6 +148,8 @@ export default function Diagnostics({ result }: { result: AuditResult }) {
           </div>
         ) : <None>No other id-like tokens.</None>}
       </section>
+      </div>
+      </details>
     </div>
   );
 }

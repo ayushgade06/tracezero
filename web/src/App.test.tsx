@@ -157,12 +157,31 @@ describe("completed audit", () => {
     expect(document.body.textContent).toContain("CITATION_TIE");
   });
 
+  it("leads with a plain verdict, where the data is, and what to do, in simple words", async () => {
+    withJob(completed);
+    await open(`#/audits/${AUDIT_ID}/requests/case_a`);
+    expect(await screen.findByRole("heading", { name: /case_a:\s*Not deleted/ })).toBeTruthy();
+    const found = screen.getByRole("heading", { name: /Where the data was found/ }).closest("section")!;
+    expect(found.textContent).toContain("The record still exists");
+    expect(found.textContent).toContain("Found in snap.sql, table docs, row 1, line 12 · seen 6 Sep 2026");
+    const next = screen.getByRole("heading", { name: "What to do next" }).closest("section")!;
+    expect(next.textContent).toContain("Delete the record");
+    expect(next.textContent).toContain("Check the record is gone");
+    const card = document.getElementById("ev-search_1")!;
+    for (const group of ["Evidence that shows it (1)", "Evidence that says otherwise (1)", "Evidence not used (1)"]) {
+      expect(card.textContent).toContain(group);
+    }
+    expect(card.textContent).toContain("The file was collected after the audit date.");
+    const summary = screen.getByLabelText("Audit summary from the engine");
+    expect(summary.textContent).toContain("Out of 3 requests, 1 still has data left, 1 can't be confirmed and 1 wasn't a deletion request.");
+  });
+
   it("shows neutral fallbacks for missing optional fields", async () => {
     withJob(completed);
     await open(`#/audits/${AUDIT_ID}/requests/case_b`);
     expect((await screen.findAllByText("STATE_UNKNOWN:HISTORICAL_READINGS_ONLY")).length).toBe(2); // blocker and reason
     expect(screen.getByText("No citation in the result for this evaluation.")).toBeTruthy();
-    expect(screen.getByText("system not recorded")).toBeTruthy();
+    expect(screen.getByText(/system not recorded/)).toBeTruthy();
     expect(screen.getByText(/No remediation/)).toBeTruthy();
     expect(screen.getByText(/does not carry the requester/)).toBeTruthy();
   });

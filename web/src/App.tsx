@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError, describeError, getHealth, isFinal, listDatasets, pollAudit, submitAudit } from "./api";
 import AuditView, { type Tab } from "./AuditView";
 import type { Job, JobStatus } from "./types";
@@ -99,7 +99,7 @@ function RunBar({ health, session, onSubmitted }: { health: Health; session: Ses
   };
 
   return (
-    <div className="runbar" role="region" aria-label="Run an audit">
+    <div className="runbox card" role="region" aria-label="Run an audit">
       <label htmlFor="dataset">Dataset</label>
       {datasets === null ? (
         <span className="muted">{listError ? describeError(listError) : health === "down" ? "Unavailable while the API is unreachable." : "Loading datasets…"}</span>
@@ -112,34 +112,41 @@ function RunBar({ health, session, onSubmitted }: { health: Health; session: Ses
       )}
       <button type="button" className="primary" onClick={run}
         disabled={!dataset || submitting || !!active || health !== "ok"}>
-        {submitting ? "Submitting…" : "Run audit"}
+        {submitting ? "Starting…" : "Run audit"}
       </button>
       {listError != null && <button type="button" onClick={load}>Retry</button>}
       {datasets !== null && <button type="button" className="link" onClick={load}>Refresh list</button>}
       <span className="hint" role="status">
         {submitError ? <span className="tone-bad">{describeError(submitError)}</span>
           : active ? <>An audit of <span className="mono">{dataset}</span> is already {active.status}: <a href={`#/audits/${active.audit_id}`}>open it</a>.</>
-          : "Runs the engine on the server with its default policy and settings. Nothing is written to disk."}
+          : "Uses the engine's default rules. Nothing is changed or saved."}
       </span>
     </div>
   );
 }
 
-function Home({ session }: { session: SessionEntry[] }) {
+const HOW = [
+  ["Pick a dataset", "A folder of deletion requests and the evidence a company kept: database exports, logs, documents and screenshots."],
+  ["Run the audit", "TraceZero reads every file and checks, request by request, whether the person's data is really gone."],
+  ["Read the answer", "Each request says Deleted, Data still found, or Can't confirm, with the exact file and line as proof."],
+];
+
+function Home({ session, runbar }: { session: SessionEntry[]; runbar: ReactNode }) {
   return (
-    <div className="stack" style={{ gap: 32 }}>
-      <div className="intro">
-        <h1>Audit deletion requests against the evidence</h1>
-        <p className="muted">
-          TraceZero decides, for each deletion request, whether deletion was actually complete at the request's audit time,
-          and ties every finding, remediation and verification step to the evidence that supports it.
-        </p>
-        <ol>
-          <li>Choose a dataset on the server and run an audit.</li>
-          <li>Review the requests that need attention: residual data or an undecided state.</li>
-          <li>Open a request to read its evidence trace: citations, readings, contradicting and inadmissible evidence.</li>
-          <li>Check the diagnostics to see what the parsers couldn't read.</li>
-        </ol>
+    <div>
+      <div className="hero">
+        <h1>Is deleted data really gone?</h1>
+        <p>TraceZero checks deletion requests against the evidence, and shows you the proof.</p>
+        {runbar}
+      </div>
+      <div className="steps3">
+        {HOW.map(([title, text], i) => (
+          <div key={title} className="card">
+            <span className="n" aria-hidden="true">{i + 1}</span>
+            <h3>{title}</h3>
+            <p>{text}</p>
+          </div>
+        ))}
       </div>
       <section className="session" aria-labelledby="h-session">
         <h2 id="h-session">Audits in this browser tab</h2>
@@ -214,16 +221,16 @@ export default function App() {
   return (
     <>
       <header className="topbar">
-        <a className="wordmark" href="#/">TraceZero<span>deletion audit</span></a>
+        <a className="wordmark" href="#/"><span className="logo" aria-hidden="true" />TraceZero</a>
         <span className="spacer" />
+        {route.auditId && <a href="#/" className="small" style={{ fontWeight: 550 }}>New audit</a>}
         <span className="health" role="status" aria-live="polite">
           {health === "ok" ? <Status value="ok" t="ok">API connected</Status>
             : health === "down" ? <Status value="down" t="bad">API unreachable</Status>
             : <Status value="checking" t="neutral">Checking API…</Status>}
-          <span className="faint">local, no authentication</span>
+          <span className="faint">Local only</span>
         </span>
       </header>
-      <RunBar health={health} session={session} onSubmitted={onSubmitted} />
       <main>
         {health === "down" && !route.auditId && (
           <div className="notice bad" role="alert" style={{ marginBottom: 24 }}>
@@ -234,7 +241,7 @@ export default function App() {
         )}
         {route.auditId
           ? <AuditView auditId={route.auditId} job={job} error={error} startedAt={startedAt.current} tab={route.tab} onRetry={() => setRetry((n) => n + 1)} />
-          : <Home session={session} />}
+          : <Home session={session} runbar={<RunBar health={health} session={session} onSubmitted={onSubmitted} />} />}
       </main>
     </>
   );

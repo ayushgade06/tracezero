@@ -2,33 +2,53 @@ import { useMemo, useState } from "react";
 import { ApiError, describeError } from "./api";
 import CaseView from "./CaseView";
 import Diagnostics from "./Diagnostics";
+import { caseLabel, caseSummary } from "./plain";
 import type { AuditResult, CaseResult, Job } from "./types";
-import { Status, caseTone } from "./ui";
+import { Status } from "./ui";
 
 export type Tab = { name: "requests"; caseId?: string } | { name: "diagnostics" };
 
-const count = (c: CaseResult, phase: string) => c.steps.filter((s) => s.phase === phase).length;
+type Group = "found" | "unsure" | "deleted" | "na";
+const groupOf = (c: CaseResult): Group | null =>
+  c.deletion_status === "COMPLETE" ? "deleted"
+    : c.deletion_status === "NOT_APPLICABLE" ? "na"
+      : c.deletion_status === "INCOMPLETE" ? (c.trace?.basis === "FINDINGS" ? "found" : "unsure") : null;
 
+const GROUPS: { key: Group; tone: "bad" | "warn" | "ok" | "neutral"; chip: string; one: string; many: string }[] = [
+  { key: "found", tone: "bad", chip: "Data still found", one: "still has data left", many: "still have data left" },
+  { key: "unsure", tone: "warn", chip: "Can't confirm", one: "can't be confirmed", many: "can't be confirmed" },
+  { key: "deleted", tone: "ok", chip: "Deleted", one: "was really deleted", many: "were really deleted" },
+  { key: "na", tone: "neutral", chip: "Not a deletion request", one: "wasn't a deletion request", many: "weren't deletion requests" },
+];
+
+/** One sentence and a few counts, each a plain count of the result's own cases. */
 function Summary({ r }: { r: AuditResult }) {
+  const count = (g: Group) => r.cases.filter((c) => groupOf(c) === g).length;
+  const parts = GROUPS.filter((g) => count(g.key)).map((g) => `${count(g.key)} ${count(g.key) === 1 ? g.one : g.many}`);
+  const sentence = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
   return (
-    <div className="summary" aria-label="Audit summary from the engine">
-      <span><b>{r.summary.rows}</b> requests</span>
-      <span><b>{r.summary.steps}</b> output steps</span>
-      <span className="group">
-        <span>Status</span>
-        {Object.entries(r.summary.status).map(([k, n]) => (
-          <span key={k}><Status value={k} t={k === "INCOMPLETE" ? "warn" : undefined}>{k} <b>{n}</b></Status></span>
-        ))}
-      </span>
-      <span className="group">
-        <span>Basis</span>
-        {Object.entries(r.summary.basis).map(([k, n]) => (
-          <span key={k}><Status value={k}>{k} <b>{n}</b></Status></span>
-        ))}
-      </span>
+    <div className="stack" style={{ gap: 12 }} aria-label="Audit summary from the engine">
+      <p className="lead">
+        {r.cases.length ? <>Out of {r.cases.length} {r.cases.length === 1 ? "request" : "requests"}, {sentence}.</> : "The request file has no requests to check."}
+      </p>
+      <div className="counts">
+        {GROUPS.filter((g) => count(g.key)).map((g) => <Status key={g.key} value={g.key} t={g.tone}>{g.chip} · {count(g.key)}</Status>)}
+      </div>
+      <details className="tech">
+        <summary>Technical summary</summary>
+        <p className="kv-line">
+          {r.summary.rows} requests · {r.summary.steps} output steps · status{" "}
+          {Object.entries(r.summary.status).map(([k, n]) => `${k} ${n}`).join(", ")} · basis{" "}
+          {Object.entries(r.summary.basis).map(([k, n]) => `${k} ${n}`).join(", ")} · {r.requests}
+        </p>
+      </details>
     </div>
   );
 }
+
+const STATUS_FILTER: Record<string, string> = {
+  COMPLETE: "Deleted", INCOMPLETE: "Not deleted or can't confirm", NOT_APPLICABLE: "Not a deletion request",
+};
 
 function RequestList({ r, auditId, selected }: { r: AuditResult; auditId: string; selected?: string }) {
   const [q, setQ] = useState("");
@@ -38,50 +58,40 @@ function RequestList({ r, auditId, selected }: { r: AuditResult; auditId: string
     return r.cases.filter((c) =>
       (!status || c.deletion_status === status) &&
       (!needle || c.case_id.toLowerCase().includes(needle) ||
-        c.steps.some((s) => s.resource_id.toLowerCase().includes(needle) || s.operation.toLowerCase().includes(needle)) ||
+        c.steps.some((s) => s.resource_id.toLowerCase().includes(needle) || s.system_id.toLowerCase().includes(needle)) ||
         c.evaluations.some((e) => e.resource_id.toLowerCase().includes(needle))));
   }, [r, q, status]);
   return (
     <div className="requests">
       <div className="filters">
         <label className="visually-hidden" htmlFor="q">Search requests</label>
-        <input id="q" type="search" placeholder="Case, resource or operation" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input id="q" type="search" placeholder="Search requests or places" value={q} onChange={(e) => setQ(e.target.value)} />
         <label className="visually-hidden" htmlFor="st">Filter by status</label>
         <select id="st" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          {Object.keys(r.summary.status).map((s) => <option key={s} value={s}>{s}</option>)}
+          <option value="">All</option>
+          {Object.keys(r.summary.status).map((s) => <option key={s} value={s}>{STATUS_FILTER[s] ?? s}</option>)}
         </select>
       </div>
-      <div className="scroll">
+      <div className="list">
         <table aria-label="Deletion requests">
-          <thead>
-            <tr>
-              <th>Case</th>
-              <th>Status · basis</th>
-              <th className="num" title="FINDING steps">Findings</th>
-              <th className="num">Blockers</th>
-              <th className="num">Steps</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Request</th><th>Result</th></tr></thead>
           <tbody>
             {rows.map((c) => {
               const href = `#/audits/${auditId}/requests/${encodeURIComponent(c.case_id)}`;
+              const { label, tone } = caseLabel(c);
               return (
                 <tr key={c.case_id} className="req-row" aria-selected={c.case_id === selected}
                   onClick={() => { window.location.hash = href.slice(1); }}>
-                  <td><a href={href} aria-current={c.case_id === selected ? "true" : undefined}>{c.case_id}</a></td>
                   <td>
-                    <Status value={c.deletion_status} t={caseTone(c.deletion_status, c.trace?.basis ?? "")} />
-                    <span className="path mono">{c.trace?.basis}</span>
+                    <a href={href} aria-current={c.case_id === selected ? "true" : undefined}>{c.case_id}</a>
+                    <span className="sub">{caseSummary(c)}</span>
                   </td>
-                  <td className="num">{count(c, "FINDING") || <span className="faint">0</span>}</td>
-                  <td className="num">{c.trace?.blockers?.length || <span className="faint">0</span>}</td>
-                  <td className="num">{c.steps.length}</td>
+                  <td><Status value={c.deletion_status} t={tone}>{label}</Status></td>
                 </tr>
               );
             })}
             {!rows.length && (
-              <tr className="empty-row"><td colSpan={5}>{r.cases.length ? "No request matches these filters." : "The request file has no rows."}</td></tr>
+              <tr className="empty-row"><td colSpan={2}>{r.cases.length ? "No request matches these filters." : "The request file has no rows."}</td></tr>
             )}
           </tbody>
         </table>
@@ -95,32 +105,30 @@ function Completed({ job, tab }: { job: Job; tab: Tab }) {
   const files = useMemo(() => new Map(r.diagnostics.files.map((f) => [f.file_id, f.file_path])), [r]);
   const selected = tab.name === "requests" ? r.cases.find((c) => c.case_id === tab.caseId) ?? r.cases[0] : undefined;
   const base = `#/audits/${job.audit_id}`;
-  const diagCount = r.diagnostics.parser.length;
+  const problems = r.diagnostics.parser.filter((d) => d.severity !== "info").length;
   return (
-    <div className="stack" style={{ gap: 20 }}>
-      <div className="stack" style={{ gap: 8 }}>
-        <div className="audit-head">
-          <h1>Audit of <span className="mono">{job.dataset_id}</span></h1>
-          <Status value="completed" />
-          <span className="faint mono" style={{ fontSize: "var(--fs-meta)" }}>{job.audit_id} · {r.requests}</span>
+    <div className="stack" style={{ gap: 28 }}>
+      <div className="audit-head">
+        <div className="title">
+          <h1>Audit of <span className="mono" style={{ fontSize: "0.9em" }}>{job.dataset_id}</span></h1>
+          <Status value="completed">Finished</Status>
         </div>
         <Summary r={r} />
-        <p className="faint" style={{ fontSize: "var(--fs-meta)" }}>
-          Results quote evidence and may contain personal data. They live only in the API's memory until it restarts.
+        <p className="faint small">
+          Results quote the evidence and may include personal data. They are kept only until the API restarts.
         </p>
+        {r.warnings.length > 0 && (
+          <details className="notes-box">
+            <summary>{r.warnings.length === 1 ? "1 note" : `${r.warnings.length} notes`} from the engine about this audit</summary>
+            {r.warnings.map((w, i) => <p key={i} className="warning-text">{w}</p>)}
+          </details>
+        )}
       </div>
-
-      {r.warnings.length > 0 && (
-        <div className="notice warn" role="status">
-          <h2>Engine warnings ({r.warnings.length})</h2>
-          {r.warnings.map((w, i) => <p key={i} className="warning-text">{w}</p>)}
-        </div>
-      )}
 
       <nav className="tabs" aria-label="Audit views">
         <a href={`${base}`} aria-current={tab.name === "requests" ? "page" : undefined}>Requests ({r.cases.length})</a>
         <a href={`${base}/diagnostics`} aria-current={tab.name === "diagnostics" ? "page" : undefined}>
-          Diagnostics ({diagCount ? `${diagCount} parser` : "no parser issues"})
+          Files read ({r.diagnostics.files.length}{problems ? `, ${problems} with issues` : ""})
         </a>
       </nav>
 
@@ -152,8 +160,8 @@ export default function AuditView({ auditId, job, error, startedAt, tab, onRetry
         <h2>{lost ? "Audit not found on the server" : timeout ? "Still not finished" : "Could not load this audit"}</h2>
         <p>{describeError(error)}</p>
         {job && !lost && <p className="faint">Last known status: <span className="mono">{job.status}</span></p>}
-        <p className="faint mono" style={{ fontSize: "var(--fs-meta)" }}>{auditId}</p>
-        <p style={{ marginTop: 4 }}>
+        <p className="faint mono small">{auditId}</p>
+        <p className="row" style={{ marginTop: 4 }}>
           {!lost && <button type="button" onClick={onRetry}>Check again</button>} <a href="#/">Start a new audit</a>
         </p>
       </div>
@@ -170,7 +178,7 @@ export default function AuditView({ auditId, job, error, startedAt, tab, onRetry
             : "The engine stopped with an internal error. The server logs only the error type, never evidence."}
         </p>
         <pre>{job.error?.message}</pre>
-        <p className="faint mono" style={{ fontSize: "var(--fs-meta)" }}>{job.error?.code} · {job.audit_id}</p>
+        <p className="faint mono small">{job.error?.code} · {job.audit_id}</p>
       </div>
     );
   }
@@ -178,17 +186,17 @@ export default function AuditView({ auditId, job, error, startedAt, tab, onRetry
   // Only the state is announced; the elapsed-time line below changes every second and stays out of the live region.
   return (
     <div className="notice">
-      <div role="status" style={{ display: "grid", gap: "var(--s1)" }}>
-        <h2 style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <Status value={job.status} /> Audit of <span className="mono">{job.dataset_id}</span>
+      <div role="status" style={{ display: "grid", gap: "var(--s2)" }}>
+        <h2 className="row">
+          <Status value={job.status}>{job.status === "queued" ? "Waiting" : "Running"}</Status> Audit of <span className="mono">{job.dataset_id}</span>
         </h2>
         <p>
           {job.status === "queued"
             ? "Accepted. Waiting for a free worker on the server."
-            : "audit() is reading the evidence and evaluating every request. The demo takes a few seconds; a large dataset can take longer."}
+            : "TraceZero is reading the evidence and checking every request. The demo takes a few seconds."}
         </p>
       </div>
-      <p className="faint" style={{ fontSize: "var(--fs-meta)" }}>
+      <p className="faint small">
         Checking every second · {since(startedAt)} since this page started watching · <span className="mono">{job.audit_id}</span>
       </p>
     </div>

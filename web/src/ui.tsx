@@ -29,10 +29,10 @@ export function caseTone(status: string, basis: string): Tone {
   return status === "INCOMPLETE" ? (basis === "FINDINGS" ? "bad" : "warn") : tone(status);
 }
 
-export function Status({ value, t, children }: { value: string; t?: Tone; children?: ReactNode }) {
+export function Status({ value, t, children, large }: { value: string; t?: Tone; children?: ReactNode; large?: boolean }) {
   return (
-    <span className={`status tone-${t ?? tone(value)}`}>
-      <span className="mark" aria-hidden="true" />
+    <span className={`pill tone-${t ?? tone(value)}${large ? " lg" : ""}`}>
+      <span className="dot" aria-hidden="true" />
       {children ?? value}
     </span>
   );
