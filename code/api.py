@@ -301,6 +301,8 @@ class Handler(BaseHTTPRequestHandler):
             status, body = 403, error("host_not_allowed", "the Host header must be localhost or an IP address")
         elif length < 0 or length > MAX_BODY:  # the body is not read, so the connection can't be reused
             self.close_connection = True
+            if MAX_BODY < length <= 16 * MAX_BODY:
+                self.rfile.read(length)  # closing with unread bytes resets the connection, and the client can lose the 413
             status, body = (400, error("invalid_request", "invalid Content-Length")) if length < 0 else \
                 (413, error("payload_too_large", f"the body is limited to {MAX_BODY} bytes"))
         else:
