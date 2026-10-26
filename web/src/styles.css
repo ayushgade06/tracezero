@@ -22,7 +22,7 @@
   --ink-2: #4a4d52;
   --ink-3: #676b72;
   --rule: #dedbd3;
-  --rule-strong: #bfbbb1;
+  --rule-strong: #88847b;   /* control borders: at least 3:1 against surface and bg (WCAG 1.4.11) */
   --accent: #1f4b99;        /* links, focus, selection: interaction only, never status */
   --accent-bg: #e7edf8;
   --focus: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
@@ -42,8 +42,8 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #141516; --surface: #1b1c1e; --surface-2: #232528;
-    --ink: #e9e7e2; --ink-2: #b7b4ad; --ink-3: #94918b;
-    --rule: #303236; --rule-strong: #474a50;
+    --ink: #e9e7e2; --ink-2: #b7b4ad; --ink-3: #97948e;
+    --rule: #303236; --rule-strong: #70737a;
     --accent: #93b2ec; --accent-bg: #1f2a3d;
     --bad: #f29380; --bad-bg: #3a1e19;
     --warn: #e6b95e; --warn-bg: #352a13;
@@ -64,7 +64,8 @@ body {
 h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 p { margin: 0; }
 a { color: var(--accent); }
-:focus-visible { outline: none; box-shadow: var(--focus); border-radius: var(--radius); }
+/* The transparent outline is what forced-colors (Windows High Contrast) mode draws, since it drops box-shadow. */
+:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus); border-radius: var(--radius); }
 .mono, code, kbd { font-family: var(--font-mono); font-size: 0.93em; }
 .muted { color: var(--ink-2); }
 .faint { color: var(--ink-3); }

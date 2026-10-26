@@ -39,6 +39,10 @@ describe("routing", () => {
     expect(parseRoute("#/audits/abc/requests/case_1")).toEqual({ auditId: "abc", tab: { name: "requests", caseId: "case_1" } });
     expect(parseRoute("#/audits/abc/diagnostics")).toEqual({ auditId: "abc", tab: { name: "diagnostics" } });
   });
+
+  it("keeps a malformed escape instead of throwing", () => {
+    expect(parseRoute("#/audits/abc/requests/case_%E0")).toEqual({ auditId: "abc", tab: { name: "requests", caseId: "case_%E0" } });
+  });
 });
 
 describe("start", () => {
@@ -92,6 +96,8 @@ describe("start", () => {
     fireEvent.click(button);
     fireEvent.click(button);
     expect(await screen.findByText(/Waiting for a free worker/)).toBeTruthy();
+    const live = screen.getByText(/Waiting for a free worker/).closest("[role=status]")!;
+    expect(live.textContent).not.toMatch(/since this page started watching/); // the ticking timer isn't announced
     expect(await screen.findByText(/is reading the evidence/, {}, { timeout: 3000 })).toBeTruthy();
     expect(screen.queryByLabelText("Audit summary from the engine")).toBeNull();
     expect(await screen.findByLabelText("Audit summary from the engine", {}, { timeout: 3000 })).toBeTruthy();

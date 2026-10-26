@@ -8,7 +8,9 @@ type Route = { auditId?: string; tab: Tab };
 type SessionEntry = { audit_id: string; dataset_id: string; submitted_at: string; status: JobStatus };
 
 export function parseRoute(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
+  const parts = hash.replace(/^#\/?/, "").split("/").map((p) => {
+    try { return decodeURIComponent(p); } catch { return p; } // a hand-edited "%" must not blank the page
+  });
   if (parts[0] !== "audits" || !parts[1]) return { tab: { name: "requests" } };
   if (parts[2] === "diagnostics") return { auditId: parts[1], tab: { name: "diagnostics" } };
   return { auditId: parts[1], tab: { name: "requests", caseId: parts[2] === "requests" ? parts[3] : undefined } };

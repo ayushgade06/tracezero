@@ -175,16 +175,19 @@ export default function AuditView({ auditId, job, error, startedAt, tab, onRetry
     );
   }
   if (job.status === "completed") return <Completed job={job} tab={tab} />;
+  // Only the state is announced; the elapsed-time line below changes every second and stays out of the live region.
   return (
-    <div className="notice" role="status" aria-live="polite">
-      <h2 style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <Status value={job.status} /> Audit of <span className="mono">{job.dataset_id}</span>
-      </h2>
-      <p>
-        {job.status === "queued"
-          ? "Accepted. Waiting for a free worker on the server."
-          : "audit() is reading the evidence and evaluating every request. The demo takes a few seconds; a large dataset can take longer."}
-      </p>
+    <div className="notice">
+      <div role="status" style={{ display: "grid", gap: "var(--s1)" }}>
+        <h2 style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <Status value={job.status} /> Audit of <span className="mono">{job.dataset_id}</span>
+        </h2>
+        <p>
+          {job.status === "queued"
+            ? "Accepted. Waiting for a free worker on the server."
+            : "audit() is reading the evidence and evaluating every request. The demo takes a few seconds; a large dataset can take longer."}
+        </p>
+      </div>
       <p className="faint" style={{ fontSize: "var(--fs-meta)" }}>
         Checking every second · {since(startedAt)} since this page started watching · <span className="mono">{job.audit_id}</span>
       </p>
