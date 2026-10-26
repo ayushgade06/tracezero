@@ -396,7 +396,7 @@ class SocketTests(unittest.TestCase):
         self.assertEqual(self.request("POST", "/audits", b"{")[2]["error"]["code"], "invalid_json")
         self.assertEqual(self.request("POST", "/audits", b'{"dataset_id": "../demo"}')[2]["error"]["code"], "invalid_dataset_id")
         self.assertEqual(self.request("GET", "/audits/x")[::2], (404, {"error": {
-            "code": "audit_not_found", "message": "no audit with this id (audits are kept in memory until the server restarts)"}}))
+            "code": "audit_not_found", "message": "no audit with this id (audits are kept in memory: the 32 most recent finished ones, until the server restarts)"}}))
         status, _, data = self.request("POST", "/audits", b"x" * (api.MAX_BODY + 1))
         self.assertEqual((status, data["error"]["code"]), (413, "payload_too_large"))
 

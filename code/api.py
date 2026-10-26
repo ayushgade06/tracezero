@@ -7,12 +7,16 @@ Usage: python code/api.py        (configuration from environment variables, see 
   POST /audits             {"dataset_id": "demo"} -> 202 {"audit_id": ..., "status": "queued"}
   GET  /audits/{audit_id}  -> 200 {"audit_id", "dataset_id", "status"[, "result" | "error"]}
 
-A dataset_id names a directory directly beneath the server's dataset root; clients never send paths.
-Every audit is audit.engine.audit(<root>/<dataset_id>) with the engine's default request file, policy and
-settings, and out=None, so the API writes no files. Jobs run on a bounded thread pool and live in memory:
-a restart loses them, and separate server processes don't share them. No authentication: results quote
-evidence and may contain personal data. The full contract is in docs/API.md.
+A dataset_id names a directory directly beneath the server's dataset root; clients never send paths, and a
+dataset whose evidence manifest names a file outside its own directory is refused. Every audit is
+audit.engine.audit(<root>/<dataset_id>) with the engine's default request file, policy and settings, and
+out=None, so the API writes no files. Jobs run on a bounded thread pool and live in memory: the oldest
+finished ones are dropped beyond KEEP_FINISHED, a restart loses them all, and separate server processes don't
+share them. Requests must name a local or IP-literal Host (no DNS rebinding). No authentication: results
+quote evidence and may contain personal data. The full contract is in docs/API.md.
 """
+import csv
+import ipaddress
 import json
 import logging
 import os
@@ -36,6 +40,7 @@ QUEUED, RUNNING, COMPLETED, FAILED = "queued", "running", "completed", "failed"
 DATASET_ID = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?")  # a single name: no separators, no "..", no drive
 AUDIT_ID = re.compile(r"[0-9a-f]{32}")
 MAX_BODY = 64 * 1024
+KEEP_FINISHED = 32  # completed/failed jobs kept for GET; a reference-sized result is ~4.4 MiB of JSON
 INTERNAL = {"code": "internal_error", "message": "the audit failed with an internal error"}
 
 
@@ -108,11 +113,30 @@ def list_datasets(root):
     return found
 
 
+def outside_dataset(path):
+    """-> the manifest file_paths that resolve outside the dataset directory `path` (resolved), following symlinks
+    and junctions. The engine reads whatever the manifest names; over HTTP that is limited to the dataset itself."""
+    try:
+        with open(path / "evidence_files.csv", encoding="utf-8", newline="") as f:
+            names = [r.get("file_path") for r in csv.DictReader(f)]
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return []  # missing or unreadable: the engine's input validation reports it
+    bad = []
+    for name in names:
+        try:
+            inside = not name or (path / name).resolve().is_relative_to(path)
+        except (OSError, ValueError):
+            inside = False
+        if not inside:
+            bad.append(name)
+    return bad
+
+
 class Jobs:
     """In-process job registry. The lock guards only the registry; audits run outside it, on the pool."""
 
-    def __init__(self, root, workers=2, max_pending=8, run=None):
-        self.root, self.max_pending = Path(root).resolve(), max_pending
+    def __init__(self, root, workers=2, max_pending=8, run=None, keep=KEEP_FINISHED):
+        self.root, self.max_pending, self.keep = Path(root).resolve(), max_pending, keep
         self._run = run or (lambda path: engine.audit(path))  # looked up per call: one audit path for CLI and API
         self._lock = threading.Lock()
         self._jobs, self._futures = {}, {}
@@ -150,27 +174,51 @@ class Jobs:
         with self._lock:
             self._jobs[audit_id].update(state)
 
+    def _finish(self, audit_id, outcome):
+        """Record the final state, then drop the earliest-finished jobs beyond `keep`. Re-inserting the job keeps
+        finished jobs in finish order, so a long audit isn't dropped as it completes. Queued and running jobs are
+        never dropped; a dropped id answers 404 audit_not_found, like an unknown one."""
+        with self._lock:
+            self._jobs[audit_id] = {**self._jobs.pop(audit_id), **outcome}
+            finished = [i for i, j in self._jobs.items() if j["status"] in (COMPLETED, FAILED)]
+            for old in finished[:max(0, len(finished) - self.keep)]:
+                del self._jobs[old]
+                self._futures.pop(old, None)
+
     def _execute(self, audit_id, dataset_id, path):
         self._set(audit_id, status=RUNNING)
         outcome = {"status": FAILED, "error": INTERNAL}  # whatever happens below, the job leaves RUNNING
         try:
+            escaped = outside_dataset(path)
+            if escaped:
+                raise InputError(f"evidence_files.csv: file_path outside the dataset directory, refused by the API: {escaped[:5]}")
             result = self._run(path)
             # The only change to AuditResult: its two path fields name the dataset, not the server's directory.
             result = replace(result, dataset=dataset_id, requests=f"{dataset_id}/{Path(result.requests).name}")
-            outcome = {"status": COMPLETED, "result": result.to_dict()}
+            outcome = {"status": COMPLETED, "result": self._scrub(result.to_dict(), path, dataset_id)}
         except InputError as e:
             outcome = {"status": FAILED, "error": {"code": "invalid_input", "message": self._redact(str(e), path, dataset_id)}}
         except Exception as e:  # noqa: BLE001 - reported as a sanitized internal_error
             log.error("audit %s failed: %s", audit_id, type(e).__name__)  # no message: it may quote evidence
         finally:
-            self._set(audit_id, **outcome)
+            self._finish(audit_id, outcome)
         log.info("audit %s %s", audit_id, outcome["status"])
 
     def _redact(self, message, path, dataset_id):
         for prefix, name in ((path, dataset_id), (self.root, "<datasets>")):
-            for form in (str(prefix), prefix.as_posix()):
+            for form in (str(prefix), prefix.as_posix(), repr(str(prefix))[1:-1]):  # repr: OSError messages quote paths
                 message = message.replace(form, name)
         return message
+
+    def _scrub(self, value, path, dataset_id):
+        """The result with server paths redacted in every string (e.g. an OSError quoted in a parser diagnostic)."""
+        if isinstance(value, str):
+            return self._redact(value, path, dataset_id)
+        if isinstance(value, list):
+            return [self._scrub(v, path, dataset_id) for v in value]
+        if isinstance(value, dict):
+            return {k: self._scrub(v, path, dataset_id) for k, v in value.items()}
+        return value
 
 
 def handle(jobs, method, target, body=b""):
@@ -191,7 +239,8 @@ def handle(jobs, method, target, body=b""):
             audit_id = path[len("/audits/"):]
             job = jobs.get(audit_id) if AUDIT_ID.fullmatch(audit_id) else None
             if job is None:
-                raise ApiError(404, "audit_not_found", "no audit with this id (audits are kept in memory until the server restarts)")
+                raise ApiError(404, "audit_not_found",
+                               f"no audit with this id (audits are kept in memory: the {KEEP_FINISHED} most recent finished ones, until the server restarts)")
             return 200, job
         raise ApiError(404, "not_found", "no such endpoint")
     except ApiError as e:
@@ -222,20 +271,42 @@ def dataset_id_of(body):
     return data["dataset_id"]
 
 
+def local_host(header):
+    """Is a Host header one a DNS-rebinding page can't send? localhost or an IP literal, any port; absent is fine."""
+    if not header:
+        return True
+    try:
+        host = urlsplit("//" + header).hostname or ""
+    except ValueError:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TraceZero"
     sys_version = ""
+    timeout = 30  # seconds a client may stall while sending a request; then the connection is dropped
 
     def _dispatch(self):
         raw = self.headers.get("Content-Length") or "0"
-        length = int(raw) if raw.isdigit() else -1
-        if length < 0 or length > MAX_BODY:  # the body is not read, so the connection can't be reused
+        length = int(raw) if raw.isascii() and raw.isdigit() else -1
+        if not local_host(self.headers.get("Host")):
+            self.close_connection = True
+            status, body = 403, error("host_not_allowed", "the Host header must be localhost or an IP address")
+        elif length < 0 or length > MAX_BODY:  # the body is not read, so the connection can't be reused
             self.close_connection = True
             status, body = (400, error("invalid_request", "invalid Content-Length")) if length < 0 else \
                 (413, error("payload_too_large", f"the body is limited to {MAX_BODY} bytes"))
         else:
+            data = self.rfile.read(length)  # a client stalling past `timeout` raises here: the connection is dropped
             try:
-                status, body = handle(self.server.jobs, self.command, self.path, self.rfile.read(length))
+                status, body = handle(self.server.jobs, self.command, self.path, data)
             except Exception as e:  # noqa: BLE001
                 log.error("request failed: %s", type(e).__name__)
                 status, body = 500, {"error": INTERNAL}
