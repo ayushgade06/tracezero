@@ -2,6 +2,8 @@
 
 The sample and evaluation requests are matched jointly, as in every milestone report since M3
 (the one-to-one activity assignment spans both files); callers pick the rows they need.
+Either request file may be absent (P2): an absent file contributes no rows, exactly like a
+header-only one, and the files present are still read together in REQUEST_FILES order.
 No evidence interpretation or policy logic lives here.
 """
 import csv
@@ -10,6 +12,18 @@ from pathlib import Path
 from audit import discovery, identity, ingest, matching, policy, state
 
 REQUEST_FILES = ("sample_deletion_requests.csv", "deletion_requests.csv")
+
+
+class InputError(ValueError):
+    """The dataset cannot be audited; the message lists every problem found."""
+
+
+def request_files(dataset):
+    """-> the dataset's request files that exist, in REQUEST_FILES order (at least one)."""
+    found = [Path(dataset) / name for name in REQUEST_FILES if (Path(dataset) / name).is_file()]
+    if not found:
+        raise InputError(f"{dataset}: no request file; expected at least one of {list(REQUEST_FILES)}")
+    return found
 
 
 def read_requests(path):
@@ -21,11 +35,12 @@ def run(dataset, use_ocr=True, conflict_gate=True, policy_matrix=None):
     """-> dict with the intermediate results of every milestone (same keys as the M6 report).
     policy_matrix: a matrix from policy.load_policy (default: policy.POLICY)."""
     dataset = Path(dataset)
+    requests = request_files(dataset)
     manifest, obs, diags = ingest.ingest(dataset, use_ocr=use_ocr)
     index = identity.load_identities(dataset)
     links = discovery.build_links(obs, index, discovery.load_catalog_links(dataset))
     res = discovery.classify_resources(obs, links)
-    rows = [r for name in REQUEST_FILES for r in read_requests(dataset / name)]
+    rows = [r for path in requests for r in read_requests(path)]
     events = matching.load_events(dataset)
     reqs, _, dec = matching.match(rows, events, links, index)
     A = state.reconstruct(reqs, dec, obs, links, res, events)

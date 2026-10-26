@@ -50,6 +50,8 @@ def audit_cases(requests, result):
 
 
 def run(dataset, requests_path, out_path, policy_matrix=None):
+    if not Path(requests_path).is_file():  # checked before the pipeline runs
+        raise pipeline.InputError(f"{requests_path}: request file not found (choose one with --requests)")
     result = pipeline.run(dataset, policy_matrix=policy_matrix)
     rows = audit_cases(pipeline.read_requests(requests_path), result)
     write_output([(c, s, steps) for c, s, steps, _ in rows], out_path)
@@ -70,11 +72,13 @@ def main(argv=None):
         matrix = policy.load_policy(a.policy) if a.policy else None
     except policy.PolicyError as e:
         raise SystemExit(f"invalid policy:\n{e}")
-    if a.refresh_intent_cache:
-        texts = [r["request_text"] for name in pipeline.REQUEST_FILES
-                 for r in pipeline.read_requests(a.dataset / name)]
-        print(f"intent cache: {llm_intent.refresh(texts)} Claude calls; usage {llm_intent.usage()}")
-    rows = run(a.dataset, a.requests or a.dataset / "deletion_requests.csv", a.out, matrix)
+    try:
+        if a.refresh_intent_cache:
+            texts = [r["request_text"] for path in pipeline.request_files(a.dataset) for r in pipeline.read_requests(path)]
+            print(f"intent cache: {llm_intent.refresh(texts)} Claude calls; usage {llm_intent.usage()}")
+        rows = run(a.dataset, a.requests or a.dataset / "deletion_requests.csv", a.out, matrix)
+    except pipeline.InputError as e:
+        raise SystemExit(f"invalid input:\n{e}")
     print(f"wrote {len(rows)} rows to {a.out}; status={dict(Counter(r[1] for r in rows))}; "
           f"basis={dict(Counter(r[3]['basis'] for r in rows))}; steps={sum(len(r[2]) for r in rows)}")
 

@@ -19,5 +19,5 @@ Evidence formats covered: `.json`, `.sql`, `.log`, `.txt`, `.pdf`. Screenshots (
 absent, because without a cache entry the OCR engine runs whenever it is installed, which would make the
 output depend on the environment. OCR is covered by the synthetic-box tests in `test_m6.py`.
 
-`sample_deletion_requests.csv` is header-only: the pipeline always reads it (requests are matched jointly).
+`sample_deletion_requests.csv` is header-only, which audits exactly like leaving the file out (requests in both files are matched jointly).
 The PDF is a minimal hand-built, uncompressed PDF, so its text is visible in the file itself.

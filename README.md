@@ -74,7 +74,7 @@ TraceZero does not ship evidence data. A dataset directory contains:
 | File | Contents |
 |---|---|
 | `deletion_requests.csv` | `case_id, email, requested_at, reported_status, reported_at, audit_at, request_text` |
-| `sample_deletion_requests.csv` | Same schema; always read, because requests are matched jointly (it may contain only the header) |
+| `sample_deletion_requests.csv` | Same schema. Optional; when present it is matched jointly with `deletion_requests.csv`. Either file may be absent, but not both |
 | `evidence_files.csv` | Evidence manifest: `file_id, file_path, origin, captured_at` |
 | `evidence/…` | The files the manifest names (`.sql`, `.json`, `.log`, `.txt`, `.pdf`, `.png`) |
 | `user_identities.csv` | Current identity snapshot: `user_id, name, email, phone, email_hash, updated_at` |
