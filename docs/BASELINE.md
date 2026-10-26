@@ -185,3 +185,27 @@ Not run: the reference guardrail. The private reference dataset and the OCR and 
 this machine (no `./dataset`, no `TRACEZERO_DATASET`, no `code/cache/`), so
 `test_p4_api.ReferenceTests.test_api_reproduces_guardrail` skips. P4 changes no engine code, but the hash
 `3e8aa75b…969db1` has not been re-measured here. Also not observed: a GitHub Actions run (nothing pushed).
+
+## P5 verification (2026-10-26)
+
+P5 adds `GET /datasets` to `code/api.py` (with `code/tests/test_p5_datasets.py`) and the web client in `web/`. No file
+under `code/audit/`, no line of `code/main.py` and no existing test changed.
+
+| # | Setup | Command | Result |
+|---|---|---|---|
+| 41 | Repository at `c18ee1b` (before P5), no dataset, no caches | full suite | PASS: 289 tests, 54 skipped |
+| 42 | Repository, no dataset, no caches | full suite; `-p "test_p5_*.py"` | PASS: 296 tests, 54 skipped; P5 tests 7 |
+| 43 | Repository | `list_datasets` without its `resolve_dataset` check | 2 P5 tests fail (symlink/junction escape, invalid names); restored |
+| 44 | Repository | `python code/main.py --dataset code/tests/fixtures/demo`; strict validation | Demo output `699d7cec…` (unchanged since P1); 0 errors, 0 warnings |
+| 45 | Node 22.22.3, npm 10.9.8, `npm ci` (Vite 8.3, React 19.3, TypeScript 7.0, vitest 5.0) | `npm test`; `npm run build`; `npm audit` | 31 tests pass; type-check and build clean; 0 vulnerabilities |
+| 46 | Repository | an excerpt rendered with `dangerouslySetInnerHTML` | the plain-text test fails; restored |
+| 47 | `python code/api.py` + `npm run dev`, Chrome | demo: health, dataset list, Run, `running` → `completed`, summary 4 rows / 13 steps, `case_901` step → evaluation jump, `case_903` blocker, diagnostics; second API on a scratch root (missing file, unsupported format, an HTML/script log line, an invalid dataset) through `TRACEZERO_API_URL`; an unknown audit id; a proxy to a closed port | All states rendered as designed. The script excerpt showed as text and did not run. `failed` listed every `invalid_input` problem. No page-level horizontal scroll at 1511 px or at 390 px (iframe). Light and dark themes checked |
+
+Found and fixed during the browser check: a `useEffect` that returned `window.scrollTo(…)` (a Promise in this
+Chrome) blanked the page on completion; locator tokens broke mid-word; the trace overflowed the page width.
+Found by the tests: polling aborted between a response and the next wait never settled.
+
+Not run: the reference guardrail (no private dataset or caches on this machine, as in P4). P5 changes no
+engine code. Not observed: a GitHub Actions run (nothing pushed). Not tested: browsers other than Chrome, and
+screen readers.
+

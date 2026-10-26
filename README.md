@@ -21,8 +21,8 @@ For every request TraceZero:
    and verification steps; an independent validator checks the result.
 
 Normal runs make no network calls and produce byte-identical output for identical inputs. TraceZero is a
-command-line tool, a Python library (see [Use as a library](#use-as-a-library)) and a minimal local HTTP API
-(see [HTTP API](#http-api)). There is no web interface yet (see [`docs/ROADMAP.md`](docs/ROADMAP.md)).
+command-line tool, a Python library (see [Use as a library](#use-as-a-library)), a minimal local HTTP API
+(see [HTTP API](#http-api)) and a local web interface over that API (see [Web interface](#web-interface)).
 
 ## Requirements
 
@@ -118,6 +118,38 @@ and `TRACEZERO_API_MAX_PENDING` set the rest. Jobs live in memory and are lost o
 authentication, and results quote evidence that may contain personal data, so keep it on `127.0.0.1`.
 Endpoints, statuses, error codes, configuration and limitations are in [`docs/API.md`](docs/API.md).
 
+## Web interface
+
+`web/` is a React + TypeScript app (Vite) for running an audit and investigating its result: the engine's
+summary, a filterable request list, each request's evidence trace (blockers, output steps, policy
+evaluations with citations, locators, establishing, contradicting and inadmissible evidence, attribution,
+remediations) and the ingest diagnostics. It shows only what the API returns and computes no scores. Needs
+Node.js ^22.22.2 or ^24.15 for the tests (jsdom); the dev server and build alone run on 20.19+. Verified on 22.22.3.
+
+```bash
+python code/api.py                 # terminal 1, from the repository root (after pip install -e .)
+cd web && npm ci && npm run dev    # terminal 2: http://127.0.0.1:5173
+```
+
+The browser talks only to the Vite server, which forwards `/api/*` to the API. The API therefore needs no
+CORS and stays on `127.0.0.1`.
+
+| Variable | Where | Default | Meaning |
+|---|---|---|---|
+| `TRACEZERO_API_URL` | `npm run dev` / `npm run preview` (Node side, not bundled) | `http://127.0.0.1:8000` | Where the dev server forwards `/api` |
+| `VITE_TRACEZERO_API_BASE` | build time (bundled) | `/api` | Base URL the browser calls. Change it only if something else serves the API under another path |
+
+Demo path: start both, check that the top bar says *API connected*, keep `demo` selected and press *Run audit*.
+The audit shows *queued* and *running*, then the summary (4 requests, 13 output steps). Open `case_901` (three
+findings) and click `search_9101` in its steps to jump to that evaluation's citation and readings. Open
+`case_903` to see a blocker, then the *Diagnostics* tab. Stop the API and the top bar turns to *API
+unreachable* within 10 s; the page explains how to start it.
+
+`npm test` runs the client tests (vitest, synthetic fixtures). `npm run build` type-checks and writes `web/dist/`,
+which `npm run preview` serves with the same proxy. There is no production server: it is a local tool on
+the same terms as the API. No authentication, no persistence (the *Audits in this browser tab* list lives in
+`sessionStorage`, and the jobs themselves are in the API's memory) and results that may contain personal data.
+
 ## Input dataset
 
 TraceZero does not ship evidence data. A dataset directory contains:
@@ -152,7 +184,7 @@ tracezero --dataset <dataset-dir> --refresh-intent-cache
 python -m unittest discover -s code/tests
 ```
 
-A clean checkout needs no private data: 289 tests, of which 235 run (synthetic data, including the
+A clean checkout needs no private data: 296 tests, of which 242 run (synthetic data, including the
 end-to-end demo tests in `test_fixture_demo.py`) and 54 skip with the reason `reference dataset not
 available`.
 
@@ -161,14 +193,15 @@ The skipped corpus tests run against the private reference dataset. Put it at `.
 `evidence_files.csv` and `evidence/`). Both caches must also be present in `code/cache/`, because the
 recorded expectations depend on them. If `TRACEZERO_DATASET` is set but files are missing, those tests
 fail and list the missing paths; they never fall back to another location. With everything present, all
-289 run and only the live-OCR test skips when the engine isn't installed.
+296 run and only the live-OCR test skips when the engine isn't installed.
 
 The configuration tests (custom policy, request files, input validation, settings) are
 `code/tests/test_p2_*.py`. Run them alone with `python -m unittest discover -s code/tests -p "test_p2_*.py"`;
 see [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md#tests).
 The library tests (result, serialisation, sequential audits, errors, CLI delegation) are
 `code/tests/test_p3_engine.py`. The HTTP API tests (validation, path containment, failures, job states,
-concurrent audits) are `code/tests/test_p4_api.py`.
+concurrent audits) are `code/tests/test_p4_api.py`, and the dataset-list tests are `code/tests/test_p5_datasets.py`.
+The web client's tests run with `cd web && npm test`.
 
 CI (`.github/workflows/ci.yml`) runs the tests and the strictly validated demo audit on every push and pull
 request, with no private data, caches, API keys or OCR engine.
@@ -177,6 +210,7 @@ request, with no private data, caches, API keys or OCR engine.
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): modules and the execution flow from evidence to output
 - [`docs/API.md`](docs/API.md): HTTP API endpoints, job statuses, errors, configuration and limitations
+- [`code/DESIGN.md`](code/DESIGN.md#web-interface-p5): the web interface's visual and content rules
 - [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md): custom policy, dataset-convention settings, request files, input validation
 - [`code/DESIGN.md`](code/DESIGN.md): per-stage rules and recorded design decisions
 - [`docs/BASELINE.md`](docs/BASELINE.md): verification commands and their recorded results

@@ -107,6 +107,21 @@ Goal: reviewers can inspect a finished audit.
   it refers to.
 - Read-only first; editing policy or requests comes later, if needed.
 
+Status: done for local use; the client is `web/`, described in the README and `ARCHITECTURE.md`, and verified in
+`BASELINE.md`, P5.
+
+- Done: a read-only React client over the P4 API. It has a dataset list (new `GET /datasets`, ids only,
+  containment-checked, 7 tests), submission and polling, the engine's summary, a filterable per-request table,
+  and the request investigation. Every step, blocker and remediation links to its policy evaluation, which shows
+  the citation's evidence id, manifest path, ref and locator, the establishing, contradicting and inadmissible
+  readings, and attribution. A diagnostics view and 31 client tests complete it.
+- Different from the bullets above: the "job list" covers only audits submitted from the current browser tab
+  (`sessionStorage`), because the API keeps no listable history. A citation opens its locator (file path,
+  table/row/line, JSON path), not the evidence content: the API serves no evidence files, and the result
+  quotes evidence only in diagnostics.
+- Not done: request fields (requester, dates, text), which `AuditResult` doesn't carry; evidence-file viewing;
+  CSV download; authentication and any deployment beyond the local Vite server.
+
 ## P6: production readiness (only when there is a deployment target)
 
 - Persistence, multi-user access control, audit logging, deployment, and monitoring.

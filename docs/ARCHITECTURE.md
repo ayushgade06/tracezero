@@ -1,6 +1,6 @@
 # TraceZero architecture (current implementation)
 
-This describes the code as it exists today: a single-process Python CLI, library and minimal HTTP API in `code/`. Per-stage rules and
+This describes the code as it exists today: a single-process Python CLI, library and minimal HTTP API in `code/`, and a web client in `web/`. Per-stage rules and
 recorded decisions live in [`code/DESIGN.md`](../code/DESIGN.md) and in each module's docstring, which is the
 most detailed and authoritative description of that stage.
 
@@ -8,6 +8,7 @@ most detailed and authoritative description of that stage.
 
 ```text
 code/main.py  main() ─► run(dataset, requests, out)      CLI: arguments, stderr warnings, exit codes
+web/          browser ─► Vite /api proxy ─► code/api.py  Web client: renders the API's JSON, computes nothing
 code/api.py   POST /audits ─► Jobs ─► thread pool        HTTP API: dataset ids, job registry, JSON errors
   │
 audit/engine.py  audit(dataset, requests, out, policy, settings) ─► AuditResult   (the only audit path)
@@ -140,6 +141,31 @@ ThreadingHTTPServer ─► Handler ─► handle(jobs, method, path, body)      
   (`audit_id`, `dataset_id`, `status`, `error`) sit beside `result`, never inside it. `InputError` becomes
   `invalid_input` with server paths redacted from its message. Any other exception becomes a fixed
   `internal_error`, and the log records only its type.
+
+## Web interface
+
+`web/` (P5) is a third caller, above the API. It never imports or reimplements engine code.
+
+```text
+browser (React)  ─► /api/*  ─► Vite dev/preview server  ─► http://127.0.0.1:8000  (code/api.py)
+  src/api.ts          only fetch site: GET /health, GET /datasets, POST /audits, GET /audits/{id}
+  src/App.tsx         health check, dataset list, submit, hash routes, polling of the open audit
+  src/AuditView.tsx   job states, summary, request list      ┐ render AuditResult.to_dict() fields
+  src/CaseView.tsx    request investigation                  │ as returned; tones and glosses only
+  src/Diagnostics.tsx files, parser diagnostics, coverage    ┘ (code/DESIGN.md, Web interface)
+```
+
+- **Boundary.** The browser sends only a `dataset_id` it got from `GET /datasets`. Everything it shows is a field of
+  the job or of `AuditResult.to_dict()` (`src/types.ts` mirrors it). The only numbers computed are list lengths
+  (steps per phase, blockers). Status, basis and every count in the summary strip are the engine's.
+- **Transport.** Same-origin `/api`, forwarded by Vite's proxy (`TRACEZERO_API_URL`). The API has no CORS headers,
+  and the client adds none of its own. `VITE_TRACEZERO_API_BASE` is the one place the base URL is set.
+- **Polling.** `pollAudit` sends one `GET /audits/{id}`, waits for the answer, then waits 1 s, until the status is
+  `completed` or `failed`. It gives up after 10 minutes. It runs only for the audit in the URL and is aborted when
+  the user navigates away. Final jobs are cached for the page's lifetime. A `404 audit_not_found` is shown as
+  lost on restart, and a network failure as the API being unreachable, never as an audit outcome.
+- **State.** No persistence beyond the tab: the list of audits submitted from it is in `sessionStorage`. The
+  jobs themselves live, and die, in the API process.
 
 ## Modules
 
