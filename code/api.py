@@ -3,6 +3,7 @@
 Usage: python code/api.py        (configuration from environment variables, see Config.from_env)
 
   GET  /health             -> 200 {"status": "ok"}  (the process is alive; says nothing about any dataset)
+  GET  /datasets           -> 200 {"datasets": [{"dataset_id": "demo"}, ...]}  (ids only, never paths)
   POST /audits             {"dataset_id": "demo"} -> 202 {"audit_id": ..., "status": "queued"}
   GET  /audits/{audit_id}  -> 200 {"audit_id", "dataset_id", "status"[, "result" | "error"]}
 
@@ -90,6 +91,23 @@ def resolve_dataset(root, dataset_id):
     return path
 
 
+def list_datasets(root):
+    """-> sorted ids of the root's direct subdirectories that POST /audits would accept and that hold the
+    default request file. Same checks as resolve_dataset, so a symlink or junction leaving the root is skipped."""
+    try:
+        names = sorted(p.name for p in root.iterdir())
+    except OSError:
+        raise ApiError(503, "datasets_unavailable", "the dataset root can't be read") from None
+    found = []
+    for name in names:
+        try:
+            if (resolve_dataset(root, name) / "deletion_requests.csv").is_file():
+                found.append(name)
+        except (ApiError, OSError):
+            continue
+    return found
+
+
 class Jobs:
     """In-process job registry. The lock guards only the registry; audits run outside it, on the pool."""
 
@@ -162,6 +180,9 @@ def handle(jobs, method, target, body=b""):
         if path == "/health":
             allow(method, "GET")
             return 200, {"status": "ok"}
+        if path == "/datasets":
+            allow(method, "GET")
+            return 200, {"datasets": [{"dataset_id": d} for d in list_datasets(jobs.root)]}
         if path == "/audits":
             allow(method, "POST")
             return 202, {"audit_id": jobs.submit(dataset_id_of(body)), "status": QUEUED}

@@ -41,6 +41,23 @@ All bodies are JSON (`application/json; charset=utf-8`), including every error.
 `200 {"status": "ok"}`. The process is alive and serving requests. It says nothing about whether a dataset
 is valid or an audit would succeed.
 
+### `GET /datasets`
+
+Added in P5 for the web interface. `200`:
+
+```json
+{"datasets": [{"dataset_id": "demo"}]}
+```
+
+The ids, sorted, of the dataset root's direct subdirectories that `POST /audits` would accept and that
+contain `deletion_requests.csv`, the request file the API audits. Each entry goes through the same check
+as a submission: the name must match the `dataset_id` format, and the entry is resolved, following symlinks
+and junctions, and must land directly inside the root. Anything else (files, other names, directories
+without the request file, links that leave the root) is left out silently. Only ids are returned: no paths,
+sizes, times or file contents. Listing doesn't validate a dataset's contents, so a listed dataset can still
+end `failed` with `invalid_input`. An unreadable root (for example, deleted after startup) answers
+`503 datasets_unavailable`, without the path.
+
 ### `POST /audits`
 
 ```http
@@ -108,6 +125,7 @@ gives a byte-identical `output.csv` (tested). There is no CSV endpoint.
 | 404 | `not_found` | Unknown endpoint |
 | 405 | `method_not_allowed` | Known endpoint, wrong method |
 | 413 | `payload_too_large` | Body over 64 KiB |
+| 503 | `datasets_unavailable` | `GET /datasets` can't read the dataset root |
 | 503 | `busy` | `TRACEZERO_API_MAX_PENDING` audits are already queued or running, or the server is shutting down |
 | 500 | `internal_error` | A failure in the HTTP layer itself |
 
@@ -144,6 +162,7 @@ Errors of a failed job, under `"error"` in `GET /audits/{id}`:
 - Results quote evidence (`diagnostics.parser[].excerpt`, `coverage.unresolved[].excerpt`, evaluations)
   and may contain personal data. Anyone who can reach the port and has an audit id can read its result.
   Ids are hard to guess, but that is not access control. There is no endpoint that lists audits.
+  `GET /datasets` lists dataset ids, which are directory names, so name dataset directories accordingly.
 - Routine logs contain the request line (method, path, status), the audit id and its final status, and
   for failures the exception type. They never contain request bodies, evidence or results.
 
@@ -167,7 +186,8 @@ Errors of a failed job, under `"error"` in `GET /audits/{id}`:
 python -m unittest discover -s code/tests -p "test_p4_*.py"
 ```
 
-30 tests, on temporary copies of the demo dataset. The API tests call `api.handle` and `api.Jobs`
+30 tests, on temporary copies of the demo dataset (plus 7 for `GET /datasets` in `test_p5_datasets.py`,
+`-p "test_p5_*.py"`). The API tests call `api.handle` and `api.Jobs`
 directly, and one class runs a real server on `127.0.0.1` with an OS-chosen port. Concurrency is controlled
 with barriers and events, not sleeps. One test, gated like the corpus tests, runs the reference dataset
 through the API and checks the guardrail hash.
