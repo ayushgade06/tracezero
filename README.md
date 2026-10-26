@@ -53,8 +53,9 @@ python code/api.py
 cd web && npm ci && npm run dev
 ```
 
-Press **Run audit** with `demo` selected. Open `case_901` and click a resource in its steps to jump to the
-evidence behind that finding. Stop either server with Ctrl+C.
+Press **Run audit** with `demo` selected. Each request gets a plain answer (*Deleted*, *Data still found*, *Can't
+confirm*). Open `case_901` and press **See the evidence** to see the exact file and line behind a finding. Stop
+either server with Ctrl+C.
 
 ## How it works
 

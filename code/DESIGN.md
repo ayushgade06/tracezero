@@ -57,57 +57,62 @@ Rejected experiments are documented in the evaluation report. See `code/evaluati
 - **Conflict gate:** a rival owner must be a registered user other than the requester, with a direct link dated in [`requested_at` − 60 days, `audit_at`] from a capture admissible at `audit_at`, and not named in the same observation as the requester (a co-subject). Unregistered identifiers are only noted as `UNRESOLVED_IDENTIFIER`.
 - **Screenshot times:** a backward-looking on-screen time (Created, Updated, …) later than the manifest capture time raises `OCR_ONSCREEN_TIME_AFTER_CAPTURE`. The capture time is kept, every unit stays, and dependent findings are noted `CAPTURE_TIME_DISPUTED`. Only `evidence_23` triggers it.
 
-## Web interface (P5)
+## Web interface (P5, redesigned in P6)
 
 `web/` is a client of the HTTP API, not a second engine. Each decision below sets the frame for later UI work.
 
-**Personality.** A case file you investigate, not a dashboard you glance at. Quiet surfaces, ink text, hairline
-rules, dense tables. The evidence trace is the product, so it gets the most space. Everything else frames it.
+**Personality.** Plain answers first, proof one click away. A first-time reader (a judge, a privacy lead) should know
+within seconds whether each person's data is gone; an auditor can still open every reading the engine used. The
+look follows calm product tools (Stripe, Linear): generous spacing, soft cards, one accent colour, no decoration.
+
+**Two layers.**
+- *Plain layer* (what everyone sees): a verdict per request (*Deleted*, *Data still found*, *Can't confirm*, *Not a
+  deletion request*), where the data was found, why it can't be confirmed, what to do next, and the evidence per
+  place in simple words. Every sentence comes from `web/src/plain.ts`, which restates the documented meaning of an
+  engine code (`final.py`, `policy.py`, `state.py`). A code without a sentence is shown verbatim, never guessed at.
+  A test reads the engine's source and fails if any operation or outcome reason lacks a sentence.
+- *Technical layer* (collapsed "Technical details"): the engine's own values, verbatim and in monospace: status,
+  basis, intent readings, blockers, `steps_json`, reason codes, rules, citations, locators, establishing,
+  contradicting and inadmissible readings, attribution, remediations, the engine summary and coverage.
 
 **Truthfulness rules.**
-- Show only what `AuditResult.to_dict()` contains. No derived scores, percentages, KPIs or sample data.
-  Counts are the engine's `summary` or a plain count of a list (findings = `FINDING` steps).
-- Engine values (`INCOMPLETE`, `RECORD_REMAINS`, `rule_03`, locators) appear verbatim in monospace. A plain
-  gloss may sit beside a trace `basis`, and only from its documented meaning (M7 above).
+- Show only what `AuditResult.to_dict()` contains. No scores, percentages or sample data. Counts are the engine's
+  summary or a plain count of a list (for example, requests per verdict, findings per request).
 - Missing data is stated neutrally ("No citation in the result for this evaluation"), never as "no evidence".
   The result has no request email, dates or text, and the UI says so instead of inventing them.
-- Evidence text is React text only, never `dangerouslySetInnerHTML`. It is shown where the engine puts it
-  (parser and coverage excerpts) and not copied elsewhere. A results note warns that it may contain personal data.
-- Diagnostics are framed as file-reading reports, never as findings.
+- Establishing, contradicting and inadmissible evidence stay in separate groups in both layers.
+- Evidence text is React text only, never `dangerouslySetInnerHTML`. A note warns that results may contain personal
+  data. Engine warnings are listed in a collapsed note, verbatim.
+- File-reading reports (*Files read*) are framed as reading issues, never as findings.
 
-**Colour** (`web/src/styles.css` tokens, light and dark). Neutrals carry the layout. Four status tones, each
-with one meaning and each paired with a text label and a distinct mark shape:
-brick square = finding or residual data, violation, parser error; amber diamond = undecided (blocked,
-inconclusive, warning, running); green circle = proven by evidence (complete, compliant); slate dash = out of scope
-(not applicable, not attributable, info). `INCOMPLETE` takes its tone from the basis: `FINDINGS` is brick, the
-"can't prove it" bases are amber. One ink blue is reserved for links, focus and selection, never for status.
-No gradients, glows, blur or decorative colour.
+**Colour** (`web/src/styles.css` tokens, light and dark). Neutrals carry the layout. Four status tones, each with one
+meaning, always with a text label and a distinct dot shape: red square = data still found, problem, parser error;
+amber diamond = can't confirm, unclear, warning; green circle = deleted, OK; grey bar = out of scope, info.
+*Data still found* is red, the "can't prove it" bases are amber. One indigo accent is reserved for links, focus,
+selection and the primary button, never for status. Text is at least 4.5:1 and control borders at least 3:1 in both
+themes. No gradients, glows or decorative colour.
 
-**Type.** System sans (Segoe UI / system-ui) for prose and labels. Monospace (Cascadia Mono / ui-monospace)
-only for ids, refs, locators, timestamps and engine tokens. Scale 12 / 13 (tables) / 14 (body) / 15
-(sections) / 19 (titles). No uppercase-tracked labels.
+**Type and space.** Inter (self-hosted, `@fontsource-variable/inter`, so it works offline) for everything except ids,
+refs, locators and engine codes, which use the system monospace. Scale 12 / 13 / 15 (body) / 17 / 22 / 30. Cards
+have 12px radius, controls 8px, pills are fully rounded. Spacing on a 4px grid.
 
-**Layout.** No sidebar. Top bar (wordmark, API health, "local, no authentication"), a run bar (dataset, Run), then
-the content. A completed audit shows one inline summary strip (no metric cards), engine warnings, and tabs:
-*Requests*, a sticky filterable request table beside the investigation (stacked below 1000px), and
-*Diagnostics*. Panels are flat, with 0 radius and 3px on controls. No nested cards. Wide tables scroll inside
-their own frame; the page never scrolls sideways (checked at 390px).
+**Layout.** Sticky top bar (logo, *New audit*, API status, "Local only"). Home: a centred question, the run box and a
+three-step explainer. A finished audit: one plain sentence, verdict counts, a collapsed technical summary and
+engine notes, then tabs: *Requests* (a filterable list beside the selected request, stacked below 1000px) and
+*Files read*. Wide tables scroll inside their own frame; the page never scrolls sideways.
 
-**Investigation order.** Header (status, basis, intent readings) → blockers → output steps grouped by phase,
-exactly the `steps_json` row → policy evaluations as `<details>` panels (open unless `COMPLIANT`): reason, finding
-explanation, citation, establishing / contradicting / inadmissible readings kept apart, attribution, withheld
-finding → remediations. A resource id in a step, blocker or remediation opens and focuses its evaluation. Every
-evidence id shows the manifest path from `diagnostics.files`.
+**Request order.** Verdict card → where the data was found (with "See the evidence") or why it can't be confirmed
+or the proof it's gone → what to do next (fixes, then checks) → evidence place by place (cards that open to the
+plain evidence, then "Technical details") → technical details for the request.
 
-**States.** One notice pattern (left rule plus tint) for every state: API unreachable (with the start command),
-no datasets, queued, running (with elapsed time), failed (`invalid_input` lists every problem verbatim), audit lost
-on restart, polling timeout ("Check again"), empty filters, empty lists. No skeletons: nothing is drawn
-before the data exists.
+**States.** One notice pattern for every state: API unreachable (with the start command), no datasets, waiting,
+running (with elapsed time, outside the live region), failed (`invalid_input` lists every problem verbatim), audit
+lost on restart, polling timeout ("Check again"), empty filters and empty lists.
 
-**Interaction.** Hash routes (`#/audits/<id>[/requests/<case>|/diagnostics]`), so Back works and a link
-survives a reload while the API process lives. The session list is per tab (`sessionStorage`) and labelled as such.
-Native `<details>`, `<select>` and links give keyboard access. The focus ring is visible, and motion is limited
-to one highlight that respects `prefers-reduced-motion`.
+**Interaction.** Hash routes (`#/audits/<id>[/requests/<case>|/diagnostics]`), so Back works and a link survives a
+reload while the API process lives. The session list is per tab (`sessionStorage`) and labelled as such. Native
+`<details>`, `<select>` and links give keyboard access. Focus is always visible (including forced-colors mode), and
+motion is limited to one highlight that respects `prefers-reduced-motion`.
 
-**Avoid.** Hero sections, metric-card rows, charts of the summary, badges on every value, emoji icons,
-marketing copy, controls that do nothing, and colour as the only signal.
+**Avoid.** Hero images, metric-card rows, charts of the summary, emoji, marketing copy, controls that do nothing,
+engine codes in the plain layer, and colour as the only signal.

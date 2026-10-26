@@ -158,6 +158,7 @@ browser (React)  ─► /api/*  ─► Vite dev/preview server  ─► http://12
   src/AuditView.tsx   job states, summary, request list      ┐ render AuditResult.to_dict() fields
   src/CaseView.tsx    request investigation                  │ as returned; tones and glosses only
   src/Diagnostics.tsx files, parser diagnostics, coverage    ┘ (code/DESIGN.md, Web interface)
+  src/plain.ts        plain-language wording of engine codes; unknown codes are shown verbatim
 ```
 
 - **Boundary.** The browser sends only a `dataset_id` it got from `GET /datasets`. Everything it shows is a field of
