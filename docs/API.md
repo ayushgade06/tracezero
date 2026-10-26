@@ -10,7 +10,7 @@ summaries itself.
 
 ## Start
 
-From a source checkout, after `python -m pip install -e .` (see the [README](../README.md#install)):
+From a source checkout, after `python -m pip install -e .` (see the [README](../README.md#quick-start)):
 
 ```bash
 python code/api.py                                   # http://127.0.0.1:8000, datasets in code/tests/fixtures
