@@ -20,8 +20,9 @@ For every request TraceZero:
 8. assembles `COMPLETE`, `INCOMPLETE` or `NOT_APPLICABLE` with cited findings, one remediation per finding,
    and verification steps; an independent validator checks the result.
 
-Normal runs make no network calls and produce byte-identical output for identical inputs. TraceZero is
-currently a command-line tool; there is no API or web interface yet (see [`docs/ROADMAP.md`](docs/ROADMAP.md)).
+Normal runs make no network calls and produce byte-identical output for identical inputs. TraceZero is a
+command-line tool and a Python library (see [Use as a library](#use-as-a-library)). There is no HTTP API or
+web interface yet (see [`docs/ROADMAP.md`](docs/ROADMAP.md)).
 
 ## Requirements
 
@@ -69,6 +70,35 @@ tracezero --dataset code/tests/fixtures/demo --out demo_output.csv
 python code/evaluation/validate_output.py --strict --output demo_output.csv --requests code/tests/fixtures/demo/deletion_requests.csv
 ```
 
+## Use as a library
+
+The CLI is a thin wrapper over one function, `audit.engine.audit`. Any Python program can call it after
+`pip install -e .`, which puts `code/` on `sys.path`. Without installing, put `code/` on `sys.path` yourself.
+
+```python
+import json
+from audit.engine import audit
+from audit.inputs import InputError
+
+try:
+    result = audit("code/tests/fixtures/demo", out="demo_output.csv")  # out is optional
+except InputError as e:          # invalid dataset, request file, policy or settings; nothing written
+    raise SystemExit(f"invalid input:\n{e}")
+
+print(result.summary)            # {'rows': 4, 'status': {...}, 'basis': {...}, 'steps': 13}
+case = result.case("case_901")
+print(case.deletion_status, case.trace["blockers"], [s["operation"] for s in case.steps])
+for e in case.evaluations:       # the policy evaluations final.assemble used, with citations and locators
+    print(e["resource_id"], e["outcome"], e["reason"], (e["citation"] or {}).get("locator"))
+print(result.warnings, result.diagnostics["coverage"]["unresolved"])
+json.dumps(result.to_dict())     # JSON-compatible: dicts, lists, strings, numbers, booleans, None
+```
+
+Signature: `audit(dataset, requests=None, *, out=None, policy=None, settings=None) -> AuditResult`. `policy` and
+`settings` take a file path or an already loaded object (`policy.load_policy`, `settings.Settings`). The result
+schema, the error contract and how the CLI uses it are in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#library-interface).
+
 ## Input dataset
 
 TraceZero does not ship evidence data. A dataset directory contains:
@@ -103,7 +133,7 @@ tracezero --dataset <dataset-dir> --refresh-intent-cache
 python -m unittest discover -s code/tests
 ```
 
-A clean checkout needs no private data: 238 tests, of which 185 run (synthetic data, including the
+A clean checkout needs no private data: 259 tests, of which 206 run (synthetic data, including the
 end-to-end demo tests in `test_fixture_demo.py`) and 53 skip with the reason `reference dataset not
 available`.
 
@@ -112,11 +142,13 @@ The skipped corpus tests run against the private reference dataset. Put it at `.
 `evidence_files.csv` and `evidence/`). Both caches must also be present in `code/cache/`, because the
 recorded expectations depend on them. If `TRACEZERO_DATASET` is set but files are missing, those tests
 fail and list the missing paths; they never fall back to another location. With everything present, all
-238 run and only the live-OCR test skips when the engine isn't installed.
+259 run and only the live-OCR test skips when the engine isn't installed.
 
 The configuration tests (custom policy, request files, input validation, settings) are
 `code/tests/test_p2_*.py`. Run them alone with `python -m unittest discover -s code/tests -p "test_p2_*.py"`;
 see [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md#tests).
+The library tests (result, serialisation, sequential audits, errors, CLI delegation) are
+`code/tests/test_p3_engine.py`.
 
 CI (`.github/workflows/ci.yml`) runs the tests and the strictly validated demo audit on every push and pull
 request, with no private data, caches, API keys or OCR engine.

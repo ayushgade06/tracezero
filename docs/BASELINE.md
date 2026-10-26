@@ -144,3 +144,25 @@ these are at `33867dc`:
 | 27 | Repository, no dataset, no caches | full suite; `-p "test_p2_*.py"` | PASS: 238 tests, 53 skipped; P2 tests 51 (policy 20, request files 7, validation 16, settings 8) |
 | 28 | Setup 22 | `python code/main.py`; strict validation; full suite | SHA-256 `3e8aa75b…969db1`; 0 errors, 1 warning (`case_61`); stderr empty (no R4e header warning); 238 tests, 1 skipped |
 | 29 | Fresh clone of `33867dc`, clean venv, Windows, Python 3.12.6 | the CI workflow's steps (`pip install -e .`, unittest, `tracezero` demo, strict validation) | PASS: 238 tests, 53 skipped; demo `699d7cec…`; 0 errors, 0 warnings. Not a Linux container (Docker daemon not running) and not an actual GitHub Actions run |
+
+## P3 verification (2026-10-26)
+
+P3 moves the audit path from `code/main.py` into `audit/engine.py` (`audit()` → `AuditResult`) and makes the CLI
+call it. No decision logic changed. The other engine edits: `PolicyError` and `SettingsError` now subclass
+`InputError`, and `ingest.coverage` lists an unreadable evidence file instead of raising (it only feeds
+diagnostics). Two test edits follow the moved function: `test_m7` calls `engine.audit_cases`, and
+`test_p2_requests` expects `InputError` from `main.run` for rows missing from the request files, plus a new
+check that the CLI still exits 1 naming the case. No other existing assertion changed.
+
+| # | Setup | Command | Result |
+|---|---|---|---|
+| 30 | Repository, no dataset, no caches | full suite; `-p "test_p3_*.py"` | PASS: 259 tests, 53 skipped; 21 new P3 tests |
+| 31 | Scratch copy plus both caches and the reference dataset at `./dataset` | `python code/main.py`; `validate_output.py --strict`; again with `--policy code/audit/deletion_rules.csv` | SHA-256 `3e8aa75b…969db1` (unchanged), both runs; 0 errors, 1 warning (`case_61`); stderr empty |
+| 32 | Setup 31 | full suite | PASS: 259 tests, 1 skipped (live OCR engine not installed) |
+| 33 | Setup 31, one Python process | `audit()` with defaults, then `Settings(sql_point_in_time_header=None)`, then defaults again | `3e8aa75b…`, `c2afa3f2…` (73 `COMPLETE`, as run 25), `3e8aa75b…`: no leakage between audits. `to_dict()` JSON: 4.4 MiB, identical across runs. Diagnostics: 0 warnings, 3 parser warnings, coverage 2531/2531 ids over 94 files, 0 unreadable |
+| 34 | Clean venv, `pip install -e .`, another working directory | the README library example on the demo | Output `699d7cec…` (as P1/P2); strict validation 0 errors, 0 warnings |
+| 35 | Repository | CLI exit codes | Bad argument 2; missing dataset 1; missing `--policy` file 1 (`invalid policy:`) |
+
+The guardrail was checked on the exact tree of each P3 code commit (`e381413`, `d7f0087`). Cost: building
+the structured result (evaluation dicts and the coverage scan) adds about 1.3 s to a reference run, measured
+before the change (0.5 s and 0.8 s). Not observed: a GitHub Actions run (nothing pushed).

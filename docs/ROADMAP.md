@@ -67,6 +67,11 @@ Goal: one function the API and UI can call, with results that explain themselves
 
 Exit: the CLI is a thin wrapper over the library, and `output.csv` is byte-identical.
 
+Status: done. The entry point is `audit.engine.audit(dataset, requests=None, *, out=None, policy=None,
+settings=None)`; the result schema is in `ARCHITECTURE.md` and the verification in `BASELINE.md`, P3. Not
+included: the independent validator's report (`evaluation/validate_output.py` still reads only the CSV)
+and a structured error object (errors are raised; P4 decides how to report them over HTTP).
+
 ## P4: backend API
 
 Goal: run audits over HTTP.

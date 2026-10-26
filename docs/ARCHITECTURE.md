@@ -1,13 +1,15 @@
 # TraceZero architecture (current implementation)
 
-This describes the code as it exists today: a single-process Python CLI in `code/`. Per-stage rules and
+This describes the code as it exists today: a single-process Python CLI and library in `code/`. Per-stage rules and
 recorded decisions live in [`code/DESIGN.md`](../code/DESIGN.md) and in each module's docstring, which is the
 most detailed and authoritative description of that stage.
 
 ## Execution flow
 
 ```text
-code/main.py  main() ─► run(dataset, requests, out)
+code/main.py  main() ─► run(dataset, requests, out)      CLI: arguments, stderr warnings, exit codes
+  │
+audit/engine.py  audit(dataset, requests, out, policy, settings) ─► AuditResult   (the only audit path)
   │
   ├─ audit/pipeline.py  run(dataset)            one deterministic pass over ALL requests
   │    1 ingest.ingest          evidence_files.csv + evidence/* ─► Observations + diagnostics
@@ -27,11 +29,12 @@ code/main.py  main() ─► run(dataset, requests, out)
   │    6 policy.run                 category ─► VIOLATION | COMPLIANT | INCONCLUSIVE |
   │                                  NOT_ATTRIBUTABLE; Findings + one Remediation each
   │
-  ├─ audit_cases()  per requested row
+  ├─ engine.audit_cases()  per requested row
   │    intent.classify (rules) + llm_intent.labels (cache only) ─► intent.decide
   │    final.assemble ─► (deletion_status, steps, trace)
   │
-  └─ output.write_output ─► output.csv   (case_id, deletion_status, steps_json)
+  ├─ output.write_output ─► output.csv   (case_id, deletion_status, steps_json), when out is given
+  └─ AuditResult: the rows above + their M5 evaluations and remediations, warnings, ingest diagnostics
 ```
 
 Requests in `sample_deletion_requests.csv` and `deletion_requests.csv` are always matched together because
@@ -40,11 +43,78 @@ the event assignment is global (one event per request, one request per event). E
 `inputs.validate` checks the CSV inputs, and `--policy` / `--settings` are loaded and validated
 (see [`CONFIGURATION.md`](CONFIGURATION.md)).
 
+## Library interface
+
+```python
+from audit.engine import audit, AuditResult, CaseResult
+audit(dataset, requests=None, *, out=None, policy=None, settings=None) -> AuditResult
+```
+
+| Argument | Meaning |
+|---|---|
+| `dataset` | Dataset directory. Every dataset file and evidence path is resolved inside it. A relative path is relative to the working directory, as with any Python file API |
+| `requests` | The request file whose rows are reported. Default `<dataset>/deletion_requests.csv`, as `--requests`. Its rows must also be in one of the dataset's request files, which are always matched jointly ([`CONFIGURATION.md`](CONFIGURATION.md#request-files)) |
+| `out` | Write the output CSV there, byte-identical to the CLI's. `None` (default) writes nothing |
+| `policy` | Policy CSV path, or a matrix from `policy.load_policy`. Default `code/audit/deletion_rules.csv` |
+| `settings` | Settings JSON path, or a `settings.Settings`. Default `settings.DEFAULT` |
+
+`main.run`, which the CLI calls, is `audit()` plus printing `result.warnings` to stderr. Argument parsing,
+loading `--policy`/`--settings` before any work, the `wrote … rows` line and the exit codes stay in
+`code/main.py`. The library does not duplicate any part of the pipeline. Nothing is written to module
+state: the policy and settings travel as arguments (`pipeline.run` → `policy.PolicyContext`,
+`ingest`/`state`), so sequential audits in one process can't affect each other
+(`code/tests/test_p3_engine.py`). The only module-level caches are a pure timestamp memo (`state._ts_memo`)
+and the read-only OCR and intent caches under `code/cache/`.
+
+**`AuditResult`** (frozen dataclasses; `to_dict()` returns plain JSON types, paths use forward slashes):
+
+| Field | Content |
+|---|---|
+| `dataset`, `requests` | The paths audited |
+| `output` | The CSV path written, or `None` |
+| `cases` | One `CaseResult` per requested row, in CSV order; `result.case(case_id)` finds one |
+| `summary` | `rows`, `status` and `basis` counts, total `steps`: the numbers the CLI prints |
+| `warnings` | Warning texts in the order the CLI prints them as `warning: …` (the R4e header warning, intent disagreements) |
+| `diagnostics.files` | Per manifest entry: `file_id`, `file_path`, `format`, the number of `observations` and `diagnostics` it produced |
+| `diagnostics.parser` | The ingest diagnostics: `file_id`, `locator`, `severity` (`info`, `warning`, `error`), `reason`, `excerpt` (≤ 240 characters of the evidence line). They cover unparsed lines, missing evidence files, unsupported formats and parser errors |
+| `diagnostics.coverage` | `ingest.coverage`: over the `files` with readable text, distinct resource ids found in the raw text (`tokens`), how many an observation represents (`represented`), the `unresolved` ones with line and excerpt, other id-like tokens by prefix (`other_id_tokens`, `other_examples`), and `unreadable` file ids |
+
+**`CaseResult`**, copied from the CSV path, not recomputed:
+
+| Field | Source |
+|---|---|
+| `case_id`, `deletion_status`, `steps` | Exactly the CSV row (`steps` is the `steps_json` array) |
+| `trace` | `final.assemble`'s trace: `basis` (`FINDINGS`, `COMPLIANCE_PROVEN`, `BLOCKED`, `NO_ACCOUNT_PROOF`, `NO_COMPLIANT_EVIDENCE`, `NON_DELETION_REQUEST`), `blockers` (`resource:reason`), `system_from_m2_link` if used, and the intent readings `intent`, `intent_rule`, `intent_llm` (`None` without a cached reading) |
+| `evaluations` | This request's M5 evaluations (`policy.Evaluation`), sorted by resource as `final.assemble` reads them: category and basis, `rule_id`, required `action`, `outcome` (`VIOLATION`, `COMPLIANT`, `INCONCLUSIVE`, `NOT_ATTRIBUTABLE`), `reason`, `underlying_outcome`, `attribution` (link evidence, M3 match and confidence, competing owners), `establishing` readings with locators, `citation` (`evidence_id`, `ref`, `locator`, `time`, `tie`), `notes` (assumed conditions and caveats), and `finding`, whose `establishing`, `contradicting`, `inadmissible` and `identifying` evidence are kept apart |
+| `remediations` | The M5 remediations of this request's findings: operation, target state, rule, `permitted_because`, `establishing_evidence`, `caveats` |
+
+A `NOT_APPLICABLE` row keeps its evaluations: the pipeline ran for it, but `final.assemble` doesn't use
+them. The engine computes no confidence score or percentage, so the result has none. Missing evidence
+shows up as `INCONCLUSIVE` evaluations, blockers and uncited verification steps, never as a citation.
+`diagnostics.parser[].excerpt`, `coverage.unresolved[].excerpt` and the evaluations quote evidence and may
+contain personal data. Treat a serialised result like the evidence itself.
+
+**Outcomes and errors.**
+
+| Situation | What the caller sees |
+|---|---|
+| Completed, no residual data | `AuditResult`; no row has `basis` `FINDINGS` |
+| Completed with residual data | `AuditResult`; rows with `basis` `FINDINGS` and `FINDING` steps |
+| Completed with warnings | `AuditResult` with non-empty `warnings` (and possibly `error` diagnostics for single evidence files, which the audit skips as before) |
+| Invalid input or configuration | `inputs.InputError` raised, nothing written. `policy.PolicyError` and `settings.SettingsError` are subclasses; the message lists every problem with file and line |
+| Internal failure | Any other exception (for example `final.AssemblyError`) propagates unchanged, nothing written |
+
+The CLI maps these as before: `invalid policy:` / `invalid settings:` / `invalid input:` and exit 1 for
+invalid input, a traceback and exit 1 for an internal failure, exit 2 for bad arguments. One message
+changed in P3: requested rows missing from the dataset's request files raised `SystemExit` from inside the
+audit. It is now an `InputError`, so the CLI prints it under `invalid input:`, still with exit 1.
+
 ## Modules
 
 | Module | Responsibility |
 |---|---|
-| `code/main.py` | CLI: argument parsing, intent decision per row, output writing, `--refresh-intent-cache` |
+| `code/main.py` | CLI: argument parsing, policy/settings loading, stderr warnings and exit codes, `--refresh-intent-cache` |
+| `audit/engine.py` | Library entry point `audit()`: validation, `pipeline.run`, intent and `final.assemble` per row, `AuditResult`, CSV writing |
 | `audit/pipeline.py` | Runs stages 1–6 in order; holds no interpretation logic |
 | `audit/observation.py` | `Observation` schema, timestamp normalisation, identifier and resource-id extraction |
 | `audit/parsers.py` | Format parsers returning observations and diagnostics (nothing dropped silently) |
@@ -109,6 +179,6 @@ Verified in the code during the P0 audit:
   locations, so only editable installs are supported. There is no lockfile or linting; CI runs the tests and
   the demo.
 - **Single-shot batch.** The whole corpus is processed in memory in one pass (about 13 s for 518 requests and
-  94 evidence files). There is no incremental or per-request API.
+  94 evidence files). `audit()` runs one whole dataset per call; there is no incremental or per-request API.
 - **Known accuracy gaps** against the reference answers: status accuracy 0.875 and step F1 0.907 on 32
   sample cases. `case_61` is an evidence-gap row (`INCOMPLETE` with no steps).
