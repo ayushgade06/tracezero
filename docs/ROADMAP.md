@@ -51,6 +51,11 @@ Goal: an organisation can run TraceZero on its own evidence without editing code
 
 Exit: the guardrail hash is unchanged with default settings; the fixture dataset runs with a custom policy file.
 
+Status: done for policy, request files, validation and the two named heuristics (see `CONFIGURATION.md`
+and `BASELINE.md`, P2). Default-path resolution (the third bullet) is not done: it was not in the P2 brief
+and still limits installs to editable mode. The OCR template geometry and the name-based category maps
+remain code.
+
 ## P3: library interface and structured results
 
 Goal: one function the API and UI can call, with results that explain themselves.

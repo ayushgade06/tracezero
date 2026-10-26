@@ -35,8 +35,10 @@ code/main.py  main() ─► run(dataset, requests, out)
 ```
 
 Requests in `sample_deletion_requests.csv` and `deletion_requests.csv` are always matched together because
-the event assignment is global (one event per request, one request per event). `--requests` only selects
-which rows are written.
+the event assignment is global (one event per request, one request per event). Either file may be absent
+(`pipeline.request_files`). `--requests` only selects which rows are written. Before any of this,
+`inputs.validate` checks the CSV inputs, and `--policy` / `--settings` are loaded and validated
+(see [`CONFIGURATION.md`](CONFIGURATION.md)).
 
 ## Modules
 
@@ -88,13 +90,16 @@ The full rule set enforced is in the docstring of `evaluation/validate_output.py
 
 Verified in the code during the P0 audit:
 
-- **Dataset-shaped inputs.** File names are fixed, and both request files must exist
-  (`pipeline.REQUEST_FILES`). There is no schema validation beyond what each parser reports.
-- **Policy is code, not configuration.** `policy.POLICY` (`audit/policy.py:73`) transcribes the rules file
-  by hand, and `deletion_rules.csv` is never read at runtime. Changing a rule means editing Python.
-- **Format-specific heuristics.** Rule R4e in `state.py:461` keys on a context field produced by one
-  specific SQL dump header. The OCR layout parser assumes one admin-console screenshot template, and the
-  log parser recognises five line formats.
+- **Dataset-shaped inputs.** File names are fixed (`pipeline.REQUEST_FILES`, `inputs.SCHEMAS`). Since P2,
+  either request file may be absent, and CSV columns, ids and request/event timestamps are validated up
+  front (`audit/inputs.py`).
+- **Policy (P2: configurable).** The default matrix is `code/audit/deletion_rules.csv`, and `--policy`
+  selects another. Category assignment (collection names, id prefixes, worker operations in
+  `audit/policy.py`) is still code.
+- **Format-specific heuristics.** The R4e SQL dump header and the screenshot template marker are settings
+  (`audit/settings.py`, `--settings`) since P2. The template geometry in `ocr.layout` (pixel bands for one
+  admin-console layout), the log parser's five line formats and the name-based category maps are still
+  code.
 - **Corpus tests need the private reference dataset.** They run when it's at `./dataset` or
   `TRACEZERO_DATASET`, with both caches, and skip otherwise (`code/tests/refdata.py`). A synthetic demo dataset
   (`code/tests/fixtures/demo`) exercises the full pipeline without it.

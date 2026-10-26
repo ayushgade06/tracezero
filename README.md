@@ -53,7 +53,9 @@ tracezero --dataset <dataset-dir> --out output.csv          # same as: python co
 python code/evaluation/validate_output.py --strict --output output.csv --requests <dataset-dir>/deletion_requests.csv
 ```
 
-Options: `[--dataset DIR] [--requests CSV] [--out CSV] [--refresh-intent-cache]`. The defaults are
+Options: `[--dataset DIR] [--requests CSV] [--out CSV] [--policy CSV] [--settings JSON] [--refresh-intent-cache]`.
+Policy, settings, request files and input validation are described in
+[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md). The defaults are
 `./dataset` and `./output.csv` at the repository root. On Windows, set `PYTHONIOENCODING=utf-8` if the
 console mangles non-ASCII output.
 
@@ -101,7 +103,7 @@ tracezero --dataset <dataset-dir> --refresh-intent-cache
 python -m unittest discover -s code/tests
 ```
 
-A clean checkout needs no private data: 187 tests, of which 134 run (synthetic data, including the
+A clean checkout needs no private data: 232 tests, of which 179 run (synthetic data, including the
 end-to-end demo tests in `test_fixture_demo.py`) and 53 skip with the reason `reference dataset not
 available`.
 
@@ -110,7 +112,7 @@ The skipped corpus tests run against the private reference dataset. Put it at `.
 `evidence_files.csv` and `evidence/`). Both caches must also be present in `code/cache/`, because the
 recorded expectations depend on them. If `TRACEZERO_DATASET` is set but files are missing, those tests
 fail and list the missing paths; they never fall back to another location. With everything present, all
-187 run and only the live-OCR test skips when the engine isn't installed.
+232 run and only the live-OCR test skips when the engine isn't installed.
 
 CI (`.github/workflows/ci.yml`) runs the tests and the strictly validated demo audit on every push and pull
 request, with no private data, caches, API keys or OCR engine.
@@ -118,6 +120,7 @@ request, with no private data, caches, API keys or OCR engine.
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): modules and the execution flow from evidence to output
+- [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md): custom policy, dataset-convention settings, request files, input validation
 - [`code/DESIGN.md`](code/DESIGN.md): per-stage rules and recorded design decisions
 - [`docs/BASELINE.md`](docs/BASELINE.md): verification commands and their recorded results
 - [`docs/ROADMAP.md`](docs/ROADMAP.md): incremental plan

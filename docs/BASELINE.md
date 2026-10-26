@@ -52,7 +52,8 @@ Only comments, docstrings and help strings changed. No logic, constant or test c
 - `code/DESIGN.md`: two wording changes
 
 Deliberately unchanged: `state.py:461` and the `test_m4.py:262` fixture, which match a literal field produced
-by the evidence SQL dump header. Changing them would change behaviour.
+by the evidence SQL dump header. Changing them would change behaviour. (P2 moved that literal, unchanged, to
+`audit/settings.py` as the default of `sql_point_in_time_header`; the fixture is untouched.)
 
 ## Licensing and repository hygiene review
 
@@ -113,3 +114,23 @@ The owner confirmed holding the rights, with no restricting terms from where the
 and chose Apache-2.0. `LICENSE` is the official text from apache.org (SHA-256 `cfc7749b…523d30`, the
 canonical file). `NOTICE` carries the copyright line, and `pyproject.toml` declares `license = "Apache-2.0"`.
 It is compatible with the dependencies' licenses (BSD, Apache-2.0), none of which is vendored.
+
+## P2 verification (2026-10-26)
+
+P2 changes engine code only to take configuration, never to change a decision. `policy.POLICY` is loaded
+from `code/audit/deletion_rules.csv`, and `test_p2_policy.py` pins it to the pre-P2 matrix, order included.
+The R4e header literal and the `Northstar` template marker moved unchanged into `audit/settings.py` as
+defaults. A missing sample request file is read as zero rows, like a header-only one. No pre-existing test
+assertion changed.
+
+| # | Setup | Command | Result |
+|---|---|---|---|
+| 21 | Repository, no dataset, no caches | `python -m unittest discover -s code/tests` | PASS: 232 tests, 53 skipped (45 new P2 tests: policy 19, request files 7, validation 13, settings 6) |
+| 22 | Scratch copy plus both caches and the reference dataset at `./dataset` | `python code/main.py`; `validate_output.py --strict` | SHA-256 `3e8aa75b…969db1` (unchanged); 0 errors, 1 warning (`case_61`) |
+| 23 | Setup 22 | `python code/main.py --policy code/audit/deletion_rules.csv --settings <{}>` | SHA-256 `3e8aa75b…969db1`: explicit defaults equal the implicit ones |
+| 24 | Setup 22 | `python -m unittest discover -s code/tests` | PASS: 232 tests, 1 skipped (live OCR engine not installed) |
+| 25 | Setup 22 | `--settings` with `screenshot_template_marker: null`; with `sql_point_in_time_header: null` | SHA-256 `e3aa4141…` (the same as run 7, no OCR cache: 15 fewer steps); and `c2afa3f2…` (20 `COMPLETE` become `INCOMPLETE`). Both settings are wired on the real path |
+| 26 | Repository | the CI demo steps, run as `python code/main.py` | Demo output `699d7cec…`, byte-identical to P1; strict validation 0 errors, 0 warnings |
+
+The guardrail was checked after each P2 commit (policy, request files, validation, settings), with the
+same hash every time. Not observed: a GitHub Actions run (nothing pushed).
