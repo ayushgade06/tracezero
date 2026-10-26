@@ -166,3 +166,22 @@ check that the CLI still exits 1 naming the case. No other existing assertion ch
 The guardrail was checked on the exact tree of each P3 code commit (`e381413`, `d7f0087`). Cost: building
 the structured result (evaluation dicts and the coverage scan) adds about 1.3 s to a reference run, measured
 before the change (0.5 s and 0.8 s). Not observed: a GitHub Actions run (nothing pushed).
+
+## P4 verification (2026-10-26)
+
+P4 adds `code/api.py` and `code/tests/test_p4_api.py`. No file under `code/audit/`, no line of
+`code/main.py` and no existing test changed. The API calls `engine.audit` with its defaults and writes
+nothing. It uses only the standard library, so it adds no dependency.
+
+| # | Setup | Command | Result |
+|---|---|---|---|
+| 36 | Repository at `0618c13` (before P4), no dataset, no caches | full suite | PASS: 259 tests, 53 skipped |
+| 37 | Repository, no dataset, no caches | full suite; `-p "test_p4_*.py"` | PASS: 289 tests, 54 skipped; P4 tests 30, 1 skipped (the reference test below) |
+| 38 | Repository | `python code/main.py --dataset code/tests/fixtures/demo`; strict validation | Demo output `699d7cec…` (unchanged since P1); 0 errors, 0 warnings |
+| 39 | Repository | each protection in `api.py` removed in turn (containment check, id format, path redaction, the `failed` default outcome, the path-field rewrite) | Each one makes at least one P4 test fail; the file was restored from git |
+| 40 | Fresh clone, clean venv, Python 3.12.6, `pip install -e .` (pypdf 6.21.2, scipy 1.18.1) | `python code/api.py`; `curl` health, `POST /audits {"dataset_id": "demo"}`, poll | `completed`; summary 4 rows, `INCOMPLETE` 2, `COMPLETE` 1, `NOT_APPLICABLE` 1, 13 steps |
+
+Not run: the reference guardrail. The private reference dataset and the OCR and intent caches are not on
+this machine (no `./dataset`, no `TRACEZERO_DATASET`, no `code/cache/`), so
+`test_p4_api.ReferenceTests.test_api_reproduces_guardrail` skips. P4 changes no engine code, but the hash
+`3e8aa75b…969db1` has not been re-measured here. Also not observed: a GitHub Actions run (nothing pushed).

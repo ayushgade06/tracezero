@@ -21,8 +21,8 @@ For every request TraceZero:
    and verification steps; an independent validator checks the result.
 
 Normal runs make no network calls and produce byte-identical output for identical inputs. TraceZero is a
-command-line tool and a Python library (see [Use as a library](#use-as-a-library)). There is no HTTP API or
-web interface yet (see [`docs/ROADMAP.md`](docs/ROADMAP.md)).
+command-line tool, a Python library (see [Use as a library](#use-as-a-library)) and a minimal local HTTP API
+(see [HTTP API](#http-api)). There is no web interface yet (see [`docs/ROADMAP.md`](docs/ROADMAP.md)).
 
 ## Requirements
 
@@ -99,6 +99,25 @@ Signature: `audit(dataset, requests=None, *, out=None, policy=None, settings=Non
 schema, the error contract and how the CLI uses it are in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#library-interface).
 
+## HTTP API
+
+`code/api.py` runs audits over HTTP for local and development use. It uses only the standard library and
+calls the same `audit.engine.audit` as the CLI. After installing as above:
+
+```bash
+python code/api.py         # http://127.0.0.1:8000; datasets are the subdirectories of code/tests/fixtures
+curl -s -X POST localhost:8000/audits -H "Content-Type: application/json" -d '{"dataset_id": "demo"}'
+# 202 {"audit_id": "1e338c8e96514a19a9a76cc39d015a45", "status": "queued"}
+curl -s localhost:8000/audits/1e338c8e96514a19a9a76cc39d015a45
+# 200 {"audit_id": "…", "dataset_id": "demo", "status": "completed", "result": {…AuditResult.to_dict()…}}
+```
+
+Point `TRACEZERO_API_DATASETS` at your own dataset root. Clients name a dataset by its directory name and
+can't send paths, policies or settings. `TRACEZERO_API_HOST`, `TRACEZERO_API_PORT`, `TRACEZERO_API_WORKERS`
+and `TRACEZERO_API_MAX_PENDING` set the rest. Jobs live in memory and are lost on restart. There is no
+authentication, and results quote evidence that may contain personal data, so keep it on `127.0.0.1`.
+Endpoints, statuses, error codes, configuration and limitations are in [`docs/API.md`](docs/API.md).
+
 ## Input dataset
 
 TraceZero does not ship evidence data. A dataset directory contains:
@@ -133,8 +152,8 @@ tracezero --dataset <dataset-dir> --refresh-intent-cache
 python -m unittest discover -s code/tests
 ```
 
-A clean checkout needs no private data: 259 tests, of which 206 run (synthetic data, including the
-end-to-end demo tests in `test_fixture_demo.py`) and 53 skip with the reason `reference dataset not
+A clean checkout needs no private data: 289 tests, of which 235 run (synthetic data, including the
+end-to-end demo tests in `test_fixture_demo.py`) and 54 skip with the reason `reference dataset not
 available`.
 
 The skipped corpus tests run against the private reference dataset. Put it at `./dataset`, or point
@@ -142,13 +161,14 @@ The skipped corpus tests run against the private reference dataset. Put it at `.
 `evidence_files.csv` and `evidence/`). Both caches must also be present in `code/cache/`, because the
 recorded expectations depend on them. If `TRACEZERO_DATASET` is set but files are missing, those tests
 fail and list the missing paths; they never fall back to another location. With everything present, all
-259 run and only the live-OCR test skips when the engine isn't installed.
+289 run and only the live-OCR test skips when the engine isn't installed.
 
 The configuration tests (custom policy, request files, input validation, settings) are
 `code/tests/test_p2_*.py`. Run them alone with `python -m unittest discover -s code/tests -p "test_p2_*.py"`;
 see [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md#tests).
 The library tests (result, serialisation, sequential audits, errors, CLI delegation) are
-`code/tests/test_p3_engine.py`.
+`code/tests/test_p3_engine.py`. The HTTP API tests (validation, path containment, failures, job states,
+concurrent audits) are `code/tests/test_p4_api.py`.
 
 CI (`.github/workflows/ci.yml`) runs the tests and the strictly validated demo audit on every push and pull
 request, with no private data, caches, API keys or OCR engine.
@@ -156,6 +176,7 @@ request, with no private data, caches, API keys or OCR engine.
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): modules and the execution flow from evidence to output
+- [`docs/API.md`](docs/API.md): HTTP API endpoints, job statuses, errors, configuration and limitations
 - [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md): custom policy, dataset-convention settings, request files, input validation
 - [`code/DESIGN.md`](code/DESIGN.md): per-stage rules and recorded design decisions
 - [`docs/BASELINE.md`](docs/BASELINE.md): verification commands and their recorded results

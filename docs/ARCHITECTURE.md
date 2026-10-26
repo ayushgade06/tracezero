@@ -1,6 +1,6 @@
 # TraceZero architecture (current implementation)
 
-This describes the code as it exists today: a single-process Python CLI and library in `code/`. Per-stage rules and
+This describes the code as it exists today: a single-process Python CLI, library and minimal HTTP API in `code/`. Per-stage rules and
 recorded decisions live in [`code/DESIGN.md`](../code/DESIGN.md) and in each module's docstring, which is the
 most detailed and authoritative description of that stage.
 
@@ -8,6 +8,7 @@ most detailed and authoritative description of that stage.
 
 ```text
 code/main.py  main() ─► run(dataset, requests, out)      CLI: arguments, stderr warnings, exit codes
+code/api.py   POST /audits ─► Jobs ─► thread pool        HTTP API: dataset ids, job registry, JSON errors
   │
 audit/engine.py  audit(dataset, requests, out, policy, settings) ─► AuditResult   (the only audit path)
   │
@@ -109,11 +110,43 @@ invalid input, a traceback and exit 1 for an internal failure, exit 2 for bad ar
 changed in P3: requested rows missing from the dataset's request files raised `SystemExit` from inside the
 audit. It is now an `InputError`, so the CLI prints it under `invalid input:`, still with exit 1.
 
+## HTTP API
+
+`code/api.py` (P4) is a second caller of `audit()`, beside the CLI. It adds no audit logic. The full
+contract is in [`API.md`](API.md).
+
+```text
+ThreadingHTTPServer ─► Handler ─► handle(jobs, method, path, body)      routing, body parsing, JSON errors
+                                    │
+                                    ├─ resolve_dataset(root, dataset_id)  format check, resolve, must be a
+                                    │                                     direct child of the root
+                                    └─ Jobs.submit ─► ThreadPoolExecutor ─► Jobs._execute
+                                                          engine.audit(<root>/<dataset_id>)
+                                                          ─► AuditResult.to_dict() | sanitized error
+```
+
+- **Boundary.** Clients send a `dataset_id`, never a path. The API calls `engine.audit(dataset_dir)` with
+  the library defaults (request file, policy, settings) and no `out`, so it writes nothing. `handle` is the
+  whole HTTP contract as a plain function; the socket handler only reads the body and writes the response.
+- **Execution.** A bounded thread pool (`TRACEZERO_API_WORKERS`) runs audits. The server itself is synchronous
+  and threaded, so there is no event loop. Submissions beyond `TRACEZERO_API_MAX_PENDING` queued or running
+  jobs get `503 busy`. The audits share the GIL: they interleave rather than run in parallel.
+- **Job registry.** An in-process dict of job states behind one lock, which is held only for state reads and
+  changes, never during an audit. Each job moves `queued → running → completed | failed`. `_execute` starts
+  from a `failed`/`internal_error` outcome and records the real outcome in a `finally`, so a job can't stay
+  `running`. The registry isn't persisted or shared: a restart loses it, and another process has its own.
+- **Result contract.** A completed job's `result` is `AuditResult.to_dict()`. Only `dataset` and `requests`
+  are rewritten, via `dataclasses.replace`, to name the dataset instead of the server path. Job fields
+  (`audit_id`, `dataset_id`, `status`, `error`) sit beside `result`, never inside it. `InputError` becomes
+  `invalid_input` with server paths redacted from its message. Any other exception becomes a fixed
+  `internal_error`, and the log records only its type.
+
 ## Modules
 
 | Module | Responsibility |
 |---|---|
 | `code/main.py` | CLI: argument parsing, policy/settings loading, stderr warnings and exit codes, `--refresh-intent-cache` |
+| `code/api.py` | HTTP API (P4): configuration, dataset-id resolution, in-memory job registry and thread pool, JSON errors |
 | `audit/engine.py` | Library entry point `audit()`: validation, `pipeline.run`, intent and `final.assemble` per row, `AuditResult`, CSV writing |
 | `audit/pipeline.py` | Runs stages 1–6 in order; holds no interpretation logic |
 | `audit/observation.py` | `Observation` schema, timestamp normalisation, identifier and resource-id extraction |

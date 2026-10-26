@@ -85,6 +85,20 @@ Goal: run audits over HTTP.
 
 Exit: an API integration test reproduces the guardrail output.
 
+Status: partly done; the minimal API in `code/api.py` is described in `API.md`, and its verification is in
+`BASELINE.md`, P4.
+
+- Done: point at a dataset by id, beneath a server-configured root (`POST /audits`); poll status and
+  fetch the structured result (`GET /audits/{id}`, `AuditResult.to_dict()`); validated configuration;
+  JSON errors; a request-size limit; 30 tests. The API writes no files, so no storage is needed.
+- Different from the bullets above: jobs run on an in-process thread pool, not out of process. The P4 brief
+  asked for an in-process registry. Request handlers don't block on an audit, but concurrent audits share
+  the GIL.
+- Not done: dataset upload, a CSV download endpoint (the CSV rows are in the result's cases), authentication,
+  and retention of uploaded evidence. Jobs are in memory and lost on restart.
+- The exit test exists (`test_p4_api.ReferenceTests`). It skips without the reference dataset and has not
+  run yet, because the dataset isn't available on this machine.
+
 ## P5: web interface
 
 Goal: reviewers can inspect a finished audit.
