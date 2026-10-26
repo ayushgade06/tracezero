@@ -135,12 +135,17 @@ ThreadingHTTPServer ─► Handler ─► handle(jobs, method, path, body)      
 - **Job registry.** An in-process dict of job states behind one lock, which is held only for state reads and
   changes, never during an audit. Each job moves `queued → running → completed | failed`. `_execute` starts
   from a `failed`/`internal_error` outcome and records the real outcome in a `finally`, so a job can't stay
-  `running`. The registry isn't persisted or shared: a restart loses it, and another process has its own.
+  `running`. Finished jobs beyond 32 are dropped, earliest-finished first; queued and running ones never are.
+  The registry isn't persisted or shared: a restart loses it, and another process has its own.
 - **Result contract.** A completed job's `result` is `AuditResult.to_dict()`. Only `dataset` and `requests`
   are rewritten, via `dataclasses.replace`, to name the dataset instead of the server path. Job fields
   (`audit_id`, `dataset_id`, `status`, `error`) sit beside `result`, never inside it. `InputError` becomes
-  `invalid_input` with server paths redacted from its message. Any other exception becomes a fixed
-  `internal_error`, and the log records only its type.
+  `invalid_input` with server paths redacted from its message, and server paths are redacted from every string
+  of a completed result too. Any other exception becomes a fixed `internal_error`, and the log records only its
+  type.
+- **Trust boundary (P6).** A dataset whose manifest names a file outside its own directory is refused before
+  `audit()` runs. This check is in the API only; the engine's behaviour, and so the CLI's, is unchanged. The
+  socket handler serves only `localhost` and IP-literal `Host` headers and drops clients that stall for 30 s.
 
 ## Web interface
 

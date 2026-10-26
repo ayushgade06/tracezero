@@ -1,6 +1,7 @@
 # Audit inputs and outputs: evidence datasets contain personal data and are supplied locally
 /dataset/
 /output.csv
+/demo_output.csv
 *.zip
 log.txt
 # Caches derived from a specific dataset (OCR text of its screenshots, LLM intent readings)

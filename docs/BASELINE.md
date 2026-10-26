@@ -209,3 +209,30 @@ Not run: the reference guardrail (no private dataset or caches on this machine, 
 engine code. Not observed: a GitHub Actions run (nothing pushed). Not tested: browsers other than Chrome, and
 screen readers.
 
+## P6 verification (2026-10-26)
+
+P6 changes `code/api.py`, the web client and the documentation. No file under `code/audit/` and no line of
+`code/main.py` changed, and the manifest check is in the API only, so the CLI's output can't change.
+
+| # | Setup | Command | Result |
+|---|---|---|---|
+| 48 | Repository at `a9be076` (end of P5), no dataset, no caches | full suite; `npm test` | PASS: 296 tests, 54 skipped; 31 client tests |
+| 49 | Fresh clone of `a9be076`, clean venv, Python 3.12.6, Windows | `pip install -e .`; `tracezero` demo; strict validation | Install OK; demo `699d7cec…`; 0 errors, 0 warnings |
+| 50 | Same clone, Node 22.22.3, npm 10.9.8 | `npm ci`; `npm test`; `npm run build`; `npm audit` | 31 tests pass; type-check and build clean; 0 vulnerabilities |
+| 51 | P5 API on a scratch root | a manifest row `../../secret/notes.txt`; an evidence path that is a directory; `Host: attacker.example`; `Content-Length: ²` | The outside file's text was in the result; the parser diagnostic held the server's absolute path; the foreign Host was served; the handler crashed without a response. All four fixed and covered by `test_p6_api.py` |
+| 52 | P5 API, Ctrl+C simulated (`_thread.interrupt_main`) with one audit running and one queued | `api.main()` | `main` returned after 0.5 s; the running audit completed before exit; the queued one was dropped; exit 0 |
+| 53 | P5 API started while another API held port 8000 | `python code/api.py` | Logged "listening" and never received a request (Windows `SO_REUSEADDR`). Fixed: exits 1 with `cannot listen on 127.0.0.1:8000: …` |
+| 54 | P5 code | `test_p4_api.SocketTests.test_errors_are_json`, 40 runs | 4 failures (`ConnectionAbortedError` before the `413`). After the drain fix: 0 in 60 |
+| 55 | Repository after P6, no dataset, no caches | full suite; `-p "test_p6_*.py"`; `npm test`; `npm run build` | PASS: 308 tests, 54 skipped; P6 tests 12; 32 client tests; build clean |
+| 56 | P6 API (port 8010) + Vite (5180) via `TRACEZERO_API_URL`, Chrome | keyboard: Tab to *Run audit*, Enter; demo; `case_901`; a malformed route; the scratch root's datasets | Proxy requests pass the Host check. Summary 4 rows / 13 steps, `case_901` 3 findings with establishing, contradicting and inadmissible readings apart. The live region holds only the state. The focus ring keeps a transparent outline for forced colors. The malformed route falls back to the first case. The escaping manifest fails `invalid_input` without the outside text; the directory diagnostic reads `dirleak\evidence\adir.log` |
+| 57 | Repository after P6 | `tracezero --dataset code/tests/fixtures/demo`; strict validation | Demo output `699d7cec…`; 0 errors, 0 warnings |
+
+Contrast was computed from the CSS tokens (WCAG formula), not measured on screen. Every text pair is at
+least 4.5:1 in both themes, and control borders are 3.7:1 (light) and 3.6:1 (dark).
+
+Not run: the reference guardrail `3e8aa75b…969db1` (no private dataset or caches on this machine). The gated
+API reference test also skips; a reference manifest naming files outside its dataset would now fail through
+the API, but not through the CLI. Not observed: a GitHub Actions run (nothing pushed). Not tested: screen
+readers, Windows forced-colors mode itself, browsers other than Chrome, and the 390 px layout (the window
+could not be resized in this session; no layout CSS changed).
+

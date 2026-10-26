@@ -18,7 +18,11 @@ TRACEZERO_API_DATASETS=/srv/tracezero/datasets python code/api.py
 ```
 
 PowerShell: `$env:TRACEZERO_API_DATASETS = "D:\datasets"; python code/api.py`. The server uses only the
-standard library, so it needs no extra install. Stop it with Ctrl+C.
+standard library, so it needs no extra install. If the port is taken (for example by another API instance),
+it exits 1 with `cannot listen on <host>:<port>: …`.
+
+Stop it with Ctrl+C. It stops accepting requests at once and drops queued audits. The process exits when any
+running audit finishes (a reference-sized audit takes about 13 s).
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -121,7 +125,8 @@ gives a byte-identical `output.csv` (tested). There is no CSV endpoint.
 | 400 | `invalid_request` | `dataset_id` missing, an unexpected field, or an invalid `Content-Length` |
 | 400 | `invalid_dataset_id` | `dataset_id` is not a string, is empty, or doesn't match the format (traversal, absolute paths, separators) |
 | 404 | `dataset_not_found` | No such directory directly in the dataset root, including a symlink or junction that resolves outside it |
-| 404 | `audit_not_found` | Unknown or malformed audit id, including any id from before a restart |
+| 403 | `host_not_allowed` | The `Host` header is neither `localhost` nor an IP literal (DNS-rebinding protection; any port is accepted). A request without `Host` is served |
+| 404 | `audit_not_found` | Unknown or malformed audit id, an id dropped by retention (see [Execution model](#execution-model)), or any id from before a restart |
 | 404 | `not_found` | Unknown endpoint |
 | 405 | `method_not_allowed` | Known endpoint, wrong method |
 | 413 | `payload_too_large` | Body over 64 KiB |
@@ -133,7 +138,7 @@ Errors of a failed job, under `"error"` in `GET /audits/{id}`:
 
 | `code` | When | `message` |
 |---|---|---|
-| `invalid_input` | The library raised `InputError`, including `PolicyError` and `SettingsError` (missing request file, bad CSV columns or values, …) | The library's message, listing every problem with file and line. Server paths are replaced by the dataset id (or `<datasets>`). It can quote values from the dataset's CSV files |
+| `invalid_input` | The library raised `InputError`, including `PolicyError` and `SettingsError` (missing request file, bad CSV columns or values, …), or the evidence manifest names a file outside the dataset directory (see [Data handling](#data-handling)) | The library's message, listing every problem with file and line. Server paths are replaced by the dataset id (or `<datasets>`). It can quote values from the dataset's CSV files |
 | `internal_error` | Any other exception | Fixed text: `the audit failed with an internal error`. The server logs the audit id and the exception type only, never its message or traceback, because both can quote evidence |
 
 ## Execution model
@@ -150,13 +155,23 @@ Errors of a failed job, under `"error"` in `GET /audits/{id}`:
 - Threads share Python's GIL, so concurrent audits interleave rather than run in parallel. A reference
   run takes about 13 s on its own.
 - Audit ids are random UUID4 hex strings (32 characters).
+- Retention: the registry keeps every queued and running job and the 32 most recently finished ones
+  (`KEEP_FINISHED`), about 140 MiB at most for reference-sized results. Finishing a 33rd drops the one that
+  finished earliest, so its id answers `404 audit_not_found`. Queued and running jobs are never dropped.
+- A client that stalls for 30 s while sending a request is disconnected. A body over 64 KiB but at most 1 MiB is
+  read and discarded before the `413`, so the client receives it rather than a connection reset.
 
 ## Data handling
 
 - Clients name datasets and never send paths. Containment is checked after resolving symlinks.
-- The datasets themselves are trusted server-side content. The engine reads each evidence file at the
-  path its `evidence_files.csv` gives, relative to the dataset. The API doesn't restrict what a dataset's
-  own manifest points to, so only put datasets you trust under the root.
+- The datasets themselves are operator-supplied content. The engine reads each evidence file at the path
+  its `evidence_files.csv` gives, relative to the dataset. Before an audit, the API resolves every manifest
+  `file_path`, following symlinks and junctions. If any lands outside the dataset directory (`..`, an absolute
+  path elsewhere, a link out), the job fails with `invalid_input` and nothing is read. The CLI and library keep
+  the engine's behaviour and read what the manifest names. Datasets can still hold arbitrary content within
+  their own directory, so only put datasets you trust under the root.
+- Server paths are redacted from every string in a result, not only from `invalid_input` messages. For
+  example, an `OSError` quoted in a parser diagnostic names the file relative to the dataset id.
 - The API calls `audit()` without `out`, so nothing is written: no CSV, no cache, no change to any dataset,
   including the demo (tested).
 - Results quote evidence (`diagnostics.parser[].excerpt`, `coverage.unresolved[].excerpt`, evaluations)
@@ -168,17 +183,19 @@ Errors of a failed job, under `"error"` in `GET /audits/{id}`:
 
 ## Limitations
 
-- Jobs and results are kept in memory, without eviction, until the process exits. A restart loses all of
-  them. A reference-sized result is about 4.4 MiB of JSON.
+- Jobs and results are kept in memory, the 32 most recently finished ones, until the process exits. A restart
+  loses all of them. A reference-sized result is about 4.4 MiB of JSON.
 - Separate server processes (several instances or workers behind a proxy) don't share the registry. An id
   from one process is unknown to another.
-- No authentication, authorization, TLS, rate limiting or retention policy. Run it on `127.0.0.1` or behind
+- No authentication, authorization, TLS or rate limiting. Run it on `127.0.0.1` or behind
   something that provides them.
 - No dataset upload. Datasets are directories that the operator places under the root.
 - Policy, settings and the request file are always the engine defaults. The API has no setting for a
   custom policy or settings file yet.
 - The independent output validator (`evaluation/validate_output.py`) is not run by the API.
-- Not production-ready. See [`ROADMAP.md`](ROADMAP.md) for what P6 would add.
+- Not production-ready. See [`ROADMAP.md`](ROADMAP.md) for what a deployment phase would add.
+- Bound to another address with `TRACEZERO_API_HOST`, the API serves clients that use its IP address, not a
+  host name, because only `localhost` and IP-literal `Host` headers are accepted.
 
 ## Tests
 
@@ -187,7 +204,7 @@ python -m unittest discover -s code/tests -p "test_p4_*.py"
 ```
 
 30 tests, on temporary copies of the demo dataset (plus 7 for `GET /datasets` in `test_p5_datasets.py`,
-`-p "test_p5_*.py"`). The API tests call `api.handle` and `api.Jobs`
+`-p "test_p5_*.py"`, and 12 for the P6 hardening in `test_p6_api.py`, `-p "test_p6_*.py"`). The API tests call `api.handle` and `api.Jobs`
 directly, and one class runs a real server on `127.0.0.1` with an OS-chosen port. Concurrency is controlled
 with barriers and events, not sleeps. One test, gated like the corpus tests, runs the reference dataset
 through the API and checks the guardrail hash.

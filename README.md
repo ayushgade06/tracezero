@@ -114,7 +114,8 @@ curl -s localhost:8000/audits/1e338c8e96514a19a9a76cc39d015a45
 
 Point `TRACEZERO_API_DATASETS` at your own dataset root. Clients name a dataset by its directory name and
 can't send paths, policies or settings. `TRACEZERO_API_HOST`, `TRACEZERO_API_PORT`, `TRACEZERO_API_WORKERS`
-and `TRACEZERO_API_MAX_PENDING` set the rest. Jobs live in memory and are lost on restart. There is no
+and `TRACEZERO_API_MAX_PENDING` set the rest. Jobs live in memory: the 32 most recently finished are kept, and a
+restart loses them all. There is no
 authentication, and results quote evidence that may contain personal data, so keep it on `127.0.0.1`.
 Endpoints, statuses, error codes, configuration and limitations are in [`docs/API.md`](docs/API.md).
 
@@ -184,7 +185,7 @@ tracezero --dataset <dataset-dir> --refresh-intent-cache
 python -m unittest discover -s code/tests
 ```
 
-A clean checkout needs no private data: 296 tests, of which 242 run (synthetic data, including the
+A clean checkout needs no private data: 308 tests, of which 254 run (synthetic data, including the
 end-to-end demo tests in `test_fixture_demo.py`) and 54 skip with the reason `reference dataset not
 available`.
 
@@ -193,18 +194,41 @@ The skipped corpus tests run against the private reference dataset. Put it at `.
 `evidence_files.csv` and `evidence/`). Both caches must also be present in `code/cache/`, because the
 recorded expectations depend on them. If `TRACEZERO_DATASET` is set but files are missing, those tests
 fail and list the missing paths; they never fall back to another location. With everything present, all
-296 run and only the live-OCR test skips when the engine isn't installed.
+308 run and only the live-OCR test skips when the engine isn't installed.
 
 The configuration tests (custom policy, request files, input validation, settings) are
 `code/tests/test_p2_*.py`. Run them alone with `python -m unittest discover -s code/tests -p "test_p2_*.py"`;
 see [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md#tests).
 The library tests (result, serialisation, sequential audits, errors, CLI delegation) are
 `code/tests/test_p3_engine.py`. The HTTP API tests (validation, path containment, failures, job states,
-concurrent audits) are `code/tests/test_p4_api.py`, and the dataset-list tests are `code/tests/test_p5_datasets.py`.
+concurrent audits) are `code/tests/test_p4_api.py`, the dataset-list tests are `code/tests/test_p5_datasets.py`, and
+the release-hardening tests (manifest containment, path redaction, job retention, Host check, stalled clients)
+are `code/tests/test_p6_api.py`.
 The web client's tests run with `cd web && npm test`.
 
 CI (`.github/workflows/ci.yml`) runs the tests and the strictly validated demo audit on every push and pull
 request, with no private data, caches, API keys or OCR engine.
+
+## Scope and limitations
+
+TraceZero is ready for **local use** by one operator: the CLI, the library, and the API and web client on
+`127.0.0.1`. It is not ready for **public or shared deployment**, and exposing the API is unsupported:
+
+- No authentication, authorization, TLS or rate limiting. The API serves only `localhost` and IP-literal
+  `Host` headers (against DNS rebinding), and anyone who can reach the port can run audits and read results.
+- Results contain sensitive data. Parser and coverage excerpts, readings and `invalid_input` messages quote
+  evidence and CSV values, which may include personal data. Treat API responses, the browser tab and any
+  written CSV accordingly.
+- No persistent audit history. The API keeps the 32 most recently finished audits in memory and loses them on
+  restart; the web client's list covers only the current browser tab.
+- Evidence inspection is by reference. The web client shows each citation's evidence id, manifest path, ref and
+  locator, plus the excerpts the engine quotes in diagnostics. It doesn't open evidence files or show request
+  fields (requester, dates, text), which the result doesn't carry.
+- Datasets are operator-supplied and trusted. The API refuses a dataset whose manifest names a file outside the
+  dataset directory; the CLI and the library read whatever the manifest names.
+
+To stop the API or the web dev server, press Ctrl+C in its terminal. The API stops accepting requests at once,
+drops queued audits, and exits when any running audit finishes.
 
 ## Documentation
 

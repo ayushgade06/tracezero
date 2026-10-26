@@ -122,7 +122,21 @@ Status: done for local use; the client is `web/`, described in the README and `A
 - Not done: request fields (requester, dates, text), which `AuditResult` doesn't carry; evidence-file viewing;
   CSV download; authentication and any deployment beyond the local Vite server.
 
-## P6: production readiness (only when there is a deployment target)
+## P6: release readiness for local use
+
+Goal: the local workflow (CLI, library, API, web client) is reproducible from a clean checkout and hardened
+against the defects an audit of the whole path finds. No new features.
+
+Status: done; verified in `BASELINE.md`, P6.
+
+- Done: the API refuses datasets whose manifest names files outside the dataset, redacts server paths from
+  results, keeps at most 32 finished jobs, rejects non-local `Host` headers (DNS rebinding), drops stalled
+  clients, refuses an occupied port, and delivers its `413`. The web client keeps the ticking timer out of its
+  live region, keeps a focus indicator in forced-colors mode, meets 3:1 for control borders and survives a
+  malformed route. `demo_output.csv` is ignored. The README states scope and limitations.
+- Not done: everything a shared or public deployment needs (next section).
+
+## P7: production deployment (only when there is a deployment target)
 
 - Persistence, multi-user access control, audit logging, deployment, and monitoring.
 - Optional LLM intent refresh as an explicit, metered admin action.
