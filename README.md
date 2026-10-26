@@ -103,7 +103,7 @@ tracezero --dataset <dataset-dir> --refresh-intent-cache
 python -m unittest discover -s code/tests
 ```
 
-A clean checkout needs no private data: 232 tests, of which 179 run (synthetic data, including the
+A clean checkout needs no private data: 238 tests, of which 185 run (synthetic data, including the
 end-to-end demo tests in `test_fixture_demo.py`) and 53 skip with the reason `reference dataset not
 available`.
 
@@ -112,7 +112,11 @@ The skipped corpus tests run against the private reference dataset. Put it at `.
 `evidence_files.csv` and `evidence/`). Both caches must also be present in `code/cache/`, because the
 recorded expectations depend on them. If `TRACEZERO_DATASET` is set but files are missing, those tests
 fail and list the missing paths; they never fall back to another location. With everything present, all
-232 run and only the live-OCR test skips when the engine isn't installed.
+238 run and only the live-OCR test skips when the engine isn't installed.
+
+The configuration tests (custom policy, request files, input validation, settings) are
+`code/tests/test_p2_*.py`. Run them alone with `python -m unittest discover -s code/tests -p "test_p2_*.py"`;
+see [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md#tests).
 
 CI (`.github/workflows/ci.yml`) runs the tests and the strictly validated demo audit on every push and pull
 request, with no private data, caches, API keys or OCR engine.

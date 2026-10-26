@@ -134,3 +134,13 @@ assertion changed.
 
 The guardrail was checked after each P2 commit (policy, request files, validation, settings), with the
 same hash every time. Not observed: a GitHub Actions run (nothing pushed).
+
+**P2 follow-up** (after the full P2 brief was available: a missing-header warning, expected columns in
+errors, duplicate reporting in the policy loader, and more tests). Runs 21–26 were recorded at `c3dc9df`;
+these are at `33867dc`:
+
+| # | Setup | Command | Result |
+|---|---|---|---|
+| 27 | Repository, no dataset, no caches | full suite; `-p "test_p2_*.py"` | PASS: 238 tests, 53 skipped; P2 tests 51 (policy 20, request files 7, validation 16, settings 8) |
+| 28 | Setup 22 | `python code/main.py`; strict validation; full suite | SHA-256 `3e8aa75b…969db1`; 0 errors, 1 warning (`case_61`); stderr empty (no R4e header warning); 238 tests, 1 skipped |
+| 29 | Fresh clone of `33867dc`, clean venv, Windows, Python 3.12.6 | the CI workflow's steps (`pip install -e .`, unittest, `tracezero` demo, strict validation) | PASS: 238 tests, 53 skipped; demo `699d7cec…`; 0 errors, 0 warnings. Not a Linux container (Docker daemon not running) and not an actual GitHub Actions run |

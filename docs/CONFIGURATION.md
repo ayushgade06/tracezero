@@ -15,6 +15,25 @@ when the module is imported. `code/tests/test_p2_policy.py` pins it to the matri
 before P2 (same categories, rule ids, actions, sources, notes and order), so an edit to the default file
 fails that test.
 
+**The representation before P2**, which the loader reproduces exactly. `policy.POLICY` was a Python dict
+with 16 entries: `data_category -> (rule_id, required_action, source, assumed_condition)`, all strings
+except `assumed_condition`, which is a string or `None`. Rules `rule_01`–`rule_15` come from the
+dataset's rules file (`source` `RULES`), and `spec_6.5_no_recreating_sync` (category `DATA_FLOW`, action
+`FLOW`) comes from the output spec (`source` `SPEC`). The consumers are:
+
+- `policy.category`: a record's explicit `record_type` counts only if it is a key of the matrix, and
+  `PolicyContext` learns id-prefix categories only from such record types;
+- `policy.evaluate`: the action selects the check in `_judge`, the `rule_id` is cited in the finding, and
+  the `assumed_condition`, if any, becomes a note;
+- `policy.plan` and `final.required_state`: the action picks the remediation and the after-the-fix check.
+
+`source` is carried along but changes no decision. Order changes no decision either (categories are
+compared after sorting), but the loader keeps file order and the test checks it. Before P2 there was no
+"malformed entry" case, because the matrix was code. A category assigned by name, content or worker
+operation but missing from the matrix raised `KeyError` mid-run, and a `record_type` missing from the
+matrix was silently not treated as an explicit category. The loader turns the first case into the
+"required category" check below; the second is still allowed (see the end of this section).
+
 A policy file is a UTF-8 CSV with one row per data category:
 
 | Column | Required | Meaning |
@@ -57,6 +76,15 @@ falls back to the default policy. A file is rejected for:
   `USER_PROFILE`. Those categories come from collection names, id prefixes, support content and
   deletion-worker operations (`policy.REQUIRED_CATEGORIES`).
 
+Example (`--policy rules.csv`, where line 2 has a bad action and line 3 repeats line 2):
+
+```
+invalid policy:
+rules.csv:2: required_action 'PURGE' is not one of ['DELETE', 'REDACT', 'ANONYMIZE', 'RETAIN', 'FLOW']
+rules.csv:3: duplicate rule_id 'rule_01' (first on line 2); duplicate data_category 'USER_PROFILE' (first on line 2)
+rules.csv: no rule for required data_category ['ACCOUNT_TOMBSTONE', ...] (the engine assigns these categories itself)
+```
+
 Other categories are optional. Leave one out and records that declare it as their `record_type` fall
 through to the other category sources, and are usually reported as `CATEGORY_UNKNOWN` (inconclusive). Add
 a new category and records whose `record_type` names it are judged under its rule.
@@ -93,6 +121,26 @@ Also checked for every file: it exists, is UTF-8, has no duplicated header name,
 fields as the header. Extra columns are allowed, except in `system_activity.csv`. A zero-byte file has no
 rows. At most 20 row problems are listed per file; the rest are counted.
 
+The cases are kept apart: a **missing** file is an error (except the optional request files, see
+above); a **zero-byte** file or a **header-only** file is valid and has no records; a header **missing a
+required column** is an error; a blank value in a column not listed above (an email, a phone, a request
+text) is accepted, as before; a **malformed row** (wrong field count, empty id, bad timestamp, duplicate
+id) is an error naming its line.
+
+Example:
+
+```
+invalid input:
+<dataset>/user_identities.csv: file not found
+<dataset>/system_activity.csv: header [..., 'details', 'team']: unexpected column(s) ['team']; this file must have exactly ['activity_id', ..., 'details']
+<dataset>/sample_deletion_requests.csv:2: requested_at 'yesterday' is not an ISO-8601 timestamp
+<dataset>/sample_deletion_requests.csv:3: empty case_id
+<dataset>/deletion_requests.csv: header ['id', 'email', ...]: missing required column(s) ['case_id']; expected columns include ['case_id', 'email', 'requested_at', 'reported_status', 'reported_at', 'audit_at', 'request_text']
+```
+
+A missing `--requests` file says `request file not found (choose one with --requests)`, and a dataset
+with neither request file says `no request file; expected at least one of [...]`.
+
 Not checked up front, on purpose: evidence files named in the manifest, and manifest `captured_at`
 values. A missing or unparseable one is already reported as a per-file diagnostic, and the audit goes on
 without that file, as before.
@@ -128,6 +176,37 @@ header value, or a label that a dump header line can never produce (it must star
 only letters, spaces and underscores, at most 41 characters) are reported with the file name. The run then
 stops with exit code 1 and doesn't fall back to the defaults.
 
+**Missing header diagnostic.** If the dataset has SQL dumps but none carries the configured header line,
+the run prints a warning to stderr (and the pipeline result lists it under `warnings`). The warning names
+any other values the label has, for example:
+
+```
+warning: sql_point_in_time_header: none of the 1 SQL dump(s) has the header line '-- Ghost Data Still Exists: point-in-time database snapshot', so rule R4e (absence from a point-in-time snapshot) never applies. If your dumps mark snapshots differently, set sql_point_in_time_header in --settings (or null).
+```
+
+The warning changes no decision. The synthetic demo prints it, because its one dump has no such header.
+The reference dataset doesn't (13 of its 24 dumps carry the header). The setting affects only R4e: other
+header lines (`Captured at`, topology) and the comparison of sibling copies within one dump (R4b) behave
+the same under any value. A test covers this.
+
+**Screenshots.** Screenshot parsing is tested on synthetic OCR boxes (`test_m6.screen`) with the default and
+a custom marker. The real OCR engine was not run in P2. The reference run reads the committed OCR cache, so
+its screenshots go through `ocr.layout` with the default marker, and the hash checks that path.
+
 For reference, on the reference dataset: `{"sql_point_in_time_header": null}` turns 20 `COMPLETE` rows
 into `INCOMPLETE`, and `{"screenshot_template_marker": null}` drops 15 screenshot-derived steps (the same
 output as running without the OCR cache).
+
+## Tests
+
+```bash
+python -m unittest discover -s code/tests                      # everything
+python -m unittest discover -s code/tests -p "test_p2_*.py"    # configuration only
+```
+
+| File | Covers |
+|---|---|
+| `test_p2_policy.py` | default policy equals the pre-P2 matrix; custom policies reach findings and remediations; every malformed-policy case; CLI never falls back |
+| `test_p2_requests.py` | both, only one, or neither request file; zero-byte file; joint matching across files; `--requests` rules |
+| `test_p2_inputs.py` | each validation rule, the edge cases above, error capping, CLI behaviour |
+| `test_p2_settings.py` | defaults equal the old literals; custom and disabled R4e header and template marker; missing-header warning; settings-file validation |
