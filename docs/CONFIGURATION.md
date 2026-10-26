@@ -65,3 +65,34 @@ A dataset's own `deletion_rules.csv` in the original convention has no `DATA_FLO
 until one is added (the default uses `spec_6.5_no_recreating_sync,DATA_FLOW,...,FLOW`). It also has no
 `assumed_condition` column, so rules 05, 06 and 14 would lose their notes. The policy file is only ever
 read from `--policy`; TraceZero doesn't pick up `deletion_rules.csv` from the dataset directory.
+
+## Request files
+
+The dataset's request files are `sample_deletion_requests.csv` and `deletion_requests.csv`. Either may be
+absent, but not both. The files present are read together, sample file first, and matched jointly: the
+one-to-one assignment of requests to deletion events spans all of them. An absent file behaves exactly
+like a header-only or zero-byte one. `--requests` (default `<dataset>/deletion_requests.csv`) chooses
+which rows to write to the output. Those rows must also be in one of the dataset's request files, so
+that they took part in the joint matching. A `case_id` may appear only once across all request files.
+
+## Input validation
+
+Before any evidence is parsed, TraceZero checks its CSV inputs and reports every problem at once, with
+file and line, then stops with exit code 1 and writes no output (`code/audit/inputs.py`). Only what the
+engine reads is required:
+
+| File | Required columns | Must be non-empty | Must be ISO-8601 | Unique |
+|---|---|---|---|---|
+| request files | `case_id, email, requested_at, reported_status, reported_at, audit_at, request_text` | `case_id` | `requested_at, reported_at, audit_at` | `case_id`, across files |
+| `evidence_files.csv` | `file_id, file_path, origin, captured_at` | `file_id, file_path` | | `file_id` |
+| `user_identities.csv` | `user_id, name, email, phone, email_hash, updated_at` | `user_id` | | `user_id` |
+| `user_audit_log.csv` | `audit_id, user_id, event_time, field_name, old_value, new_value` | | | |
+| `system_activity.csv` | exactly `activity_id, event_time, event_type, source_system, target_system, resource_id, reported_result, details` | `activity_id` | `event_time` | `activity_id` |
+
+Also checked for every file: it exists, is UTF-8, has no duplicated header name, and every row has as many
+fields as the header. Extra columns are allowed, except in `system_activity.csv`. A zero-byte file has no
+rows. At most 20 row problems are listed per file; the rest are counted.
+
+Not checked up front, on purpose: evidence files named in the manifest, and manifest `captured_at`
+values. A missing or unparseable one is already reported as a per-file diagnostic, and the audit goes on
+without that file, as before.

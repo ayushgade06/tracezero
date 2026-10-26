@@ -15,7 +15,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from audit import final, intent, llm_intent, pipeline, policy
+from audit import final, inputs, intent, llm_intent, pipeline, policy
 from audit.matching import _ts
 from audit.output import write_output
 from audit.state import _iso
@@ -50,8 +50,11 @@ def audit_cases(requests, result):
 
 
 def run(dataset, requests_path, out_path, policy_matrix=None):
-    if not Path(requests_path).is_file():  # checked before the pipeline runs
+    joint = pipeline.request_files(dataset)  # checked before the pipeline runs
+    if not Path(requests_path).is_file():
         raise pipeline.InputError(f"{requests_path}: request file not found (choose one with --requests)")
+    own = [] if Path(requests_path).resolve() in {p.resolve() for p in joint} else [requests_path]
+    inputs.validate(dataset, joint, own)  # one report covering --requests too; pipeline.run re-checks the dataset
     result = pipeline.run(dataset, policy_matrix=policy_matrix)
     rows = audit_cases(pipeline.read_requests(requests_path), result)
     write_output([(c, s, steps) for c, s, steps, _ in rows], out_path)

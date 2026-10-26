@@ -4,22 +4,22 @@ The sample and evaluation requests are matched jointly, as in every milestone re
 (the one-to-one activity assignment spans both files); callers pick the rows they need.
 Either request file may be absent (P2): an absent file contributes no rows, exactly like a
 header-only one, and the files present are still read together in REQUEST_FILES order.
+The CSV inputs are validated first (audit/inputs.py), so bad input stops with one clear report.
 No evidence interpretation or policy logic lives here.
 """
 import csv
 from pathlib import Path
 
-from audit import discovery, identity, ingest, matching, policy, state
+from audit import discovery, identity, ingest, inputs, matching, policy, state
+from audit.inputs import InputError
 
 REQUEST_FILES = ("sample_deletion_requests.csv", "deletion_requests.csv")
 
 
-class InputError(ValueError):
-    """The dataset cannot be audited; the message lists every problem found."""
-
-
 def request_files(dataset):
     """-> the dataset's request files that exist, in REQUEST_FILES order (at least one)."""
+    if not Path(dataset).is_dir():
+        raise InputError(f"{dataset}: dataset directory not found")
     found = [Path(dataset) / name for name in REQUEST_FILES if (Path(dataset) / name).is_file()]
     if not found:
         raise InputError(f"{dataset}: no request file; expected at least one of {list(REQUEST_FILES)}")
@@ -36,6 +36,7 @@ def run(dataset, use_ocr=True, conflict_gate=True, policy_matrix=None):
     policy_matrix: a matrix from policy.load_policy (default: policy.POLICY)."""
     dataset = Path(dataset)
     requests = request_files(dataset)
+    inputs.validate(dataset, requests)
     manifest, obs, diags = ingest.ingest(dataset, use_ocr=use_ocr)
     index = identity.load_identities(dataset)
     links = discovery.build_links(obs, index, discovery.load_catalog_links(dataset))
