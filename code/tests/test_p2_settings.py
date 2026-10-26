@@ -14,7 +14,7 @@ sys.path.insert(0, str(CODE))
 sys.path.insert(0, str(CODE / "tests"))
 
 import main  # noqa: E402
-from audit import discovery, matching, ocr, parsers, settings, state  # noqa: E402
+from audit import discovery, matching, ocr, parsers, pipeline, settings, state  # noqa: E402
 from test_m4 import CLAIM, MY_AUDIT, TEACH, ex, meta, req, toy_index  # noqa: E402
 from test_m6 import META, obs_of, screen  # noqa: E402
 
@@ -24,9 +24,14 @@ CUSTOM = settings.Settings(sql_point_in_time_header=("Snapshot Kind", "full expo
 
 def pit_dump(head):
     """Two copies of one table, listing only someone else's record (MY_AUDIT), after a comment header."""
+    return pit_dump_rows(head, MY_AUDIT)
+
+
+def pit_dump_rows(head, rows):
+    """Two copies of one table (rows: (copy, resource_id, system, collection, record)), after a comment header."""
     cols = "(resource_id TEXT PRIMARY KEY, origin_system TEXT, collection_name TEXT, record_json TEXT, updated_at TEXT)"
     body = "".join(f"INSERT INTO \"customer_data_{t}\" VALUES('{rid}','{s}','{c}','{json.dumps(r)}','2026-09-05T00:00:00Z');\n"
-                   for t, rid, s, c, r in MY_AUDIT)
+                   for t, rid, s, c, r in rows)
     text = (f"{head}-- Captured at: 2026-09-05T00:00:00Z\nBEGIN TRANSACTION;\nCREATE TABLE customer_data_primary {cols};\n"
             f"CREATE TABLE customer_data_read_replica {cols};\n{body}COMMIT;\n")
     return parsers.parse_sql(meta("ev_pit", "sql", "2026-09-05T00:00:00Z"), text)[0]
@@ -90,6 +95,32 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(account_existence(custom, CUSTOM), "ABSENT")
         self.assertEqual(account_existence(reference, CUSTOM), "UNKNOWN")
         self.assertEqual(account_existence(reference, settings.Settings(sql_point_in_time_header=None)), "UNKNOWN")
+
+    def test_sibling_copy_comparison_does_not_depend_on_the_header_setting(self):
+        mine = ("read_replica", "account_1", "account_service", "customer_profiles", {"resource_id": "account_1", "user_id": "user_1", "email": "one@x.io"})
+        for head in ("-- Ghost Data Still Exists: point-in-time database snapshot\n", "-- Snapshot Kind: full export\n", ""):
+            for conventions in (settings.DEFAULT, CUSTOM, settings.Settings(sql_point_in_time_header=None)):
+                obs, idx = TEACH + pit_dump_rows(head, MY_AUDIT + [mine]), toy_index()
+                links = discovery.build_links(obs, idx)
+                requests, _, dec = matching.match([req()], list(CLAIM), links, idx)
+                a = {(x.case_id, x.resource_id): x for x in state.reconstruct(
+                    requests, dec, obs, links, discovery.classify_resources(obs, links), list(CLAIM), conventions)}[("case_1", "account_1")]
+                self.assertEqual((ex(a)["value"], ex(a)["per_copy"]), ("PRESENT", {"primary": "ABSENT", "read_replica": "PRESENT"}))
+
+    def test_missing_configured_header_is_reported(self):
+        def warnings(head, conventions):
+            return settings.point_in_time_warnings(conventions, pit_dump(head))
+        reference = "-- Ghost Data Still Exists: point-in-time database snapshot\n"
+        self.assertEqual(warnings(reference, settings.DEFAULT), [])
+        self.assertEqual(warnings("-- Snapshot Kind: full export\n", CUSTOM), [])
+        self.assertEqual(warnings(reference, settings.Settings(sql_point_in_time_header=None)), [])
+        self.assertEqual(settings.point_in_time_warnings(CUSTOM, []), [])  # no SQL dump: nothing to say
+        [w] = warnings(reference, CUSTOM)
+        self.assertIn("none of the 1 SQL dump(s) has the header line '-- Snapshot Kind: full export'", w)
+        self.assertIn("set sql_point_in_time_header in --settings", w)
+        [w] = warnings("-- Snapshot Kind: partial\n", CUSTOM)
+        self.assertIn("the label appears with other value(s) ['partial']", w)
+        self.assertEqual(len(pipeline.run(DEMO)["warnings"]), 1)  # the demo dump has no R4e header
 
     def test_screenshot_marker_setting_drives_template_recognition(self):
         def recognised(boxes, marker=settings.DEFAULT.screenshot_template_marker):

@@ -61,7 +61,7 @@ def check_csv(path, schema, errors, seen=None):
             extra = [c for c in header if c not in columns] if schema.get("exact") else []
             if missing or extra or len(set(header)) != len(header):
                 errors.append(f"{path}: header {header}: " + "; ".join(
-                    ([f"missing required column(s) {missing}"] if missing else []) +
+                    ([f"missing required column(s) {missing}; expected columns include {list(columns)}"] if missing else []) +
                     ([f"unexpected column(s) {extra}; this file must have exactly {list(columns)}"] if extra else []) +
                     (["duplicate column names"] if len(set(header)) != len(header) else [])))
                 return

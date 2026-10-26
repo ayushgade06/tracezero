@@ -87,6 +87,21 @@ class InputValidationTests(unittest.TestCase):
         (self.ds / "user_audit_log.csv").write_bytes(b"")
         inputs.validate(self.ds, pipeline.request_files(self.ds))
 
+    def test_header_only_file_is_valid_with_zero_records(self):
+        (self.ds / "user_audit_log.csv").write_text("audit_id,user_id,event_time,field_name,old_value,new_value\n", encoding="utf-8")
+        inputs.validate(self.ds, pipeline.request_files(self.ds))
+
+    def test_optional_fields_may_be_blank(self):
+        self.edit("user_identities.csv", ",+1 555 0100,", ",,")  # phone
+        self.edit(MAIN, "mira.holt@example.org,", ",")  # email: the request stays unresolved, as before
+        inputs.validate(self.ds, pipeline.request_files(self.ds))
+        pipeline.run(self.ds)
+
+    def test_missing_column_message_lists_the_expected_columns(self):
+        self.edit(MAIN, "case_id,email,", "id,email,")
+        self.errors(f"{MAIN}: header", "missing required column(s) ['case_id']; expected columns include ['case_id', 'email', "
+                    "'requested_at', 'reported_status', 'reported_at', 'audit_at', 'request_text']")
+
     def test_not_utf8(self):
         (self.ds / "user_identities.csv").write_bytes("user_id,name\nuser_1,J\xf6rg\n".encode("latin-1"))
         self.errors("user_identities.csv: not UTF-8 text")

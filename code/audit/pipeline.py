@@ -12,7 +12,7 @@ from pathlib import Path
 
 from audit import discovery, identity, ingest, inputs, matching, policy, state
 from audit.inputs import InputError
-from audit.settings import DEFAULT
+from audit.settings import DEFAULT, point_in_time_warnings
 
 REQUEST_FILES = ("sample_deletion_requests.csv", "deletion_requests.csv")
 
@@ -49,4 +49,4 @@ def run(dataset, use_ocr=True, conflict_gate=True, policy_matrix=None, settings=
     A = state.reconstruct(reqs, dec, obs, links, res, events, settings)
     E, F, R = policy.run(A, policy.PolicyContext(obs, manifest, conflict_gate=conflict_gate, events=events, policy=policy_matrix))
     return {"manifest": manifest, "obs": obs, "diags": diags, "links": links, "res": res, "rows": rows,
-            "dec": dec, "A": A, "E": E, "F": F, "R": R}
+            "dec": dec, "A": A, "E": E, "F": F, "R": R, "warnings": point_in_time_warnings(settings, obs)}

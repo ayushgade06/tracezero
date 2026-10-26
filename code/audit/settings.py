@@ -39,6 +39,21 @@ class Settings:
 DEFAULT = Settings()
 
 
+def point_in_time_warnings(conventions, observations):
+    """-> warnings (text) when SQL dumps are present but none carries the configured R4e header line.
+    Diagnostic only: it never changes an observation or a decision."""
+    key = conventions.point_in_time_context
+    sql = [o for o in observations if o.file_format == "sql"]
+    if key is None or not sql or any(o.context.get(key[0]) == key[1] for o in sql):
+        return []
+    label, value = conventions.sql_point_in_time_header
+    others = sorted({o.context[key[0]] for o in sql if key[0] in o.context})
+    return [f"sql_point_in_time_header: none of the {len({o.file_id for o in sql})} SQL dump(s) has the header line "
+            f"'-- {label}: {value}', so rule R4e (absence from a point-in-time snapshot) never applies"
+            + (f"; the label appears with other value(s) {others}" if others else "")
+            + ". If your dumps mark snapshots differently, set sql_point_in_time_header in --settings (or null)."]
+
+
 def load_settings(path):
     """settings JSON -> Settings (unset keys keep their defaults). Raises SettingsError listing every problem."""
     path = Path(path)

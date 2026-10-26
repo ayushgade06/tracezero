@@ -56,6 +56,8 @@ def run(dataset, requests_path, out_path, policy_matrix=None, conventions=settin
     own = [] if Path(requests_path).resolve() in {p.resolve() for p in joint} else [requests_path]
     inputs.validate(dataset, joint, own)  # one report covering --requests too; pipeline.run re-checks the dataset
     result = pipeline.run(dataset, policy_matrix=policy_matrix, settings=conventions)
+    for w in result["warnings"]:
+        print(f"warning: {w}", file=sys.stderr)
     rows = audit_cases(pipeline.read_requests(requests_path), result)
     write_output([(c, s, steps) for c, s, steps, _ in rows], out_path)
     return rows
