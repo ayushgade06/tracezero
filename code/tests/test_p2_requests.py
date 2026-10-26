@@ -109,9 +109,13 @@ class RequestFileTests(unittest.TestCase):
     def test_requested_rows_must_be_in_the_dataset_request_files(self):
         self.split({"case_902"})
         (self.ds / SAMPLE).unlink()  # case_902 is no longer in any of the dataset's request files
-        with self.assertRaises(SystemExit) as cm:
+        with self.assertRaises(pipeline.InputError) as cm:  # P3: the library raises InputError, not SystemExit
             main.run(self.ds, DEMO / MAIN, self.out)
-        self.assertIn("case_902", str(cm.exception.code))
+        self.assertIn("case_902", str(cm.exception))
+        with self.assertRaises(SystemExit) as cm:
+            main.main(["--dataset", str(self.ds), "--requests", str(DEMO / MAIN), "--out", str(self.out)])
+        self.assertIn("case_902", cm.exception.code)
+        self.assertFalse(self.out.exists())
 
 
 if __name__ == "__main__":

@@ -12,55 +12,20 @@ committed OCR cache (code/cache/ocr); the OCR engine is only needed to regenerat
 """
 import argparse
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 
-from audit import final, inputs, intent, llm_intent, pipeline, policy, settings
-from audit.matching import _ts
-from audit.output import write_output
-from audit.state import _iso
+from audit import engine, llm_intent, pipeline, policy, settings
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def audit_cases(requests, result):
-    """-> [(case_id, status, steps, trace)] for the requested rows, from one pipeline result."""
-    known = {r["case_id"] for r in result["rows"]}
-    missing = [r["case_id"] for r in requests if r["case_id"] not in known]
-    if missing:
-        raise SystemExit(f"requests not in the dataset's request files (needed for joint matching): {missing[:5]}")
-    evaluations = defaultdict(list)
-    for e in result["E"]:
-        evaluations[e.case_id].append(e)
-    remediation_of = {r.finding_id: r for r in result["R"]}
-    fallback = final.link_systems(result["links"])
-    llm = llm_intent.labels({r["request_text"] for r in requests})
-    out = []
-    for req in requests:  # input order is kept: case_33..case_550 ascending by case number
-        rule, read = intent.classify(req["request_text"]), llm[req["request_text"]]
-        label = intent.decide(rule, read)
-        if label == intent.AMBIGUOUS:
-            print(f"warning: ambiguous intent audited as deletion: {req['case_id']}", file=sys.stderr)
-        elif read not in (None, rule):
-            print(f"warning: rule {rule} / LLM {read} -> {label}: {req['case_id']}", file=sys.stderr)
-        status, steps, trace = final.assemble(req["case_id"], label, evaluations[req["case_id"]], remediation_of,
-                                              _iso(_ts(req["audit_at"])), fallback)
-        out.append((req["case_id"], status, steps, dict(trace, intent=label, intent_rule=rule, intent_llm=read)))
-    return out
-
-
 def run(dataset, requests_path, out_path, policy_matrix=None, conventions=settings.DEFAULT):
-    joint = pipeline.request_files(dataset)  # checked before the pipeline runs
-    if not Path(requests_path).is_file():
-        raise pipeline.InputError(f"{requests_path}: request file not found (choose one with --requests)")
-    own = [] if Path(requests_path).resolve() in {p.resolve() for p in joint} else [requests_path]
-    inputs.validate(dataset, joint, own)  # one report covering --requests too; pipeline.run re-checks the dataset
-    result = pipeline.run(dataset, policy_matrix=policy_matrix, settings=conventions)
-    for w in result["warnings"]:
+    """Audit through the library (audit/engine.py), print its warnings to stderr; -> [(case_id, status, steps, trace)]."""
+    result = engine.audit(dataset, requests_path, out=out_path, policy=policy_matrix, settings=conventions)
+    for w in result.warnings:
         print(f"warning: {w}", file=sys.stderr)
-    rows = audit_cases(pipeline.read_requests(requests_path), result)
-    write_output([(c, s, steps) for c, s, steps, _ in rows], out_path)
-    return rows
+    return [(c.case_id, c.deletion_status, c.steps, c.trace) for c in result.cases]
 
 
 def main(argv=None):

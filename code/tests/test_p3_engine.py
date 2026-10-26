@@ -20,6 +20,7 @@ from unittest import mock
 CODE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CODE))
 
+import main  # noqa: E402
 from audit import engine, final, pipeline, policy, settings  # noqa: E402
 from audit.engine import AuditResult, audit  # noqa: E402
 from audit.inputs import InputError  # noqa: E402
@@ -243,6 +244,15 @@ class EngineTests(unittest.TestCase):
                 audit(DEMO, out=out)
         self.assertNotIsInstance(cm.exception, InputError)  # distinguishable from invalid input
         self.assertFalse(out.exists())
+
+    # CLI delegation
+
+    def test_cli_delegates_to_the_library(self):
+        out = self.work / "cli.csv"
+        with mock.patch.object(engine, "audit", wraps=engine.audit) as spy:
+            main.main(["--dataset", str(DEMO), "--out", str(out), "--policy", str(policy.DEFAULT_POLICY_FILE)])
+        spy.assert_called_once()
+        self.assertEqual(out.read_bytes(), self.out.read_bytes())
 
 
 if __name__ == "__main__":

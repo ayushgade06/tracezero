@@ -20,7 +20,7 @@ sys.path.insert(0, str(CODE))
 sys.path.insert(0, str(CODE / "tests"))
 sys.path.append(str(CODE / "evaluation"))  # after CODE, so "main" is code/main.py
 
-from audit import final, intent, pipeline, policy  # noqa: E402
+from audit import engine, final, intent, pipeline, policy  # noqa: E402
 import main  # noqa: E402
 import test_m5 as m5  # noqa: E402
 import validate_output  # noqa: E402
@@ -225,7 +225,7 @@ class CorpusTests(unittest.TestCase):
     def setUpClass(cls):
         cls.result = pipeline.run(DATASET)
         cls.requests = pipeline.read_requests(DATASET / "deletion_requests.csv")
-        cls.rows = {c: (s, steps, t) for c, s, steps, t in main.audit_cases(cls.requests, cls.result)}
+        cls.rows = {c: (s, steps, t) for c, s, steps, t in engine.audit_cases(cls.requests, cls.result)}
         cls.E = {(e.case_id, e.resource_id): e for e in cls.result["E"]}
         cls.tmp = tempfile.TemporaryDirectory()
         cls.out = Path(cls.tmp.name) / "output.csv"
