@@ -1,0 +1,17 @@
+rule_id,data_category,condition,required_action,source,assumed_condition
+rule_01,USER_PROFILE,Always,DELETE,RULES,
+rule_02,SECONDARY_IDENTIFIER,Always,DELETE,RULES,
+rule_03,SEARCH_INDEX_ENTRY,Always,DELETE,RULES,
+rule_04,CACHE_ENTRY,Always,DELETE,RULES,
+rule_05,SUPPORT_MESSAGE,The conversation holds shared context that must be kept,REDACT,RULES,CONDITION_ASSUMED_SHARED_CONTEXT
+rule_06,SUPPORT_ATTACHMENT,The attachment belongs only to the requester,DELETE,RULES,CONDITION_ASSUMED_SOLE_SUBJECT
+rule_07,ANALYTICS_PROFILE,The record is still attributable to a user,ANONYMIZE,RULES,
+rule_08,PRODUCT_TELEMETRY,The record is still attributable to a user,ANONYMIZE,RULES,
+rule_09,USER_EXPORT,Always,DELETE,RULES,
+rule_10,MARKETING_PROFILE,Always,DELETE,RULES,
+rule_11,EMAIL_DELIVERY_LOG,The log holds a user email address,REDACT,RULES,
+rule_12,SECURITY_AUDIT_LOG,Within the supplied retention period,RETAIN,RULES,
+rule_13,LEGAL_HOLD_RECORD,A supplied legal hold is active,RETAIN,RULES,
+rule_14,BACKUP_ARCHIVE,Restore access can be blocked,RETAIN,RULES,CONDITION_ASSUMED_RESTORE_BLOCKABLE
+rule_15,ACCOUNT_TOMBSTONE,Only a stable internal user_id is kept,REDACT,RULES,
+spec_6.5_no_recreating_sync,DATA_FLOW,No active sync can recreate deleted data,FLOW,SPEC,

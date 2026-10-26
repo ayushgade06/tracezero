@@ -35,8 +35,9 @@ retention period supplied by any observation is retained (RETAINED_NO_PERIOD_SUP
 its presence); rule_12 gives no end, and the sample answers treat such a record as retained. A
 present LEGAL_HOLD_RECORD is itself the supplied hold: with no supplied end it is active (approved).
 
-POLICY MATRIX (POLICY below). Required action per category from deletion_rules.csv [RULES];
-DATA_FLOW is not in the rules file and follows 6.5 "no active sync ... can recreate" [SPEC].
+POLICY MATRIX (POLICY below, loaded from audit/deletion_rules.csv; a custom file via load_policy and
+PolicyContext(policy=...)). Required action per category from the dataset's deletion_rules.csv [RULES];
+DATA_FLOW is not in that rules file and follows 6.5 "no active sync ... can recreate" [SPEC].
 Unverifiable rule conditions (rule_05 shared context, rule_06 attachment belongs only to the
 subject, rule_14 restore can be blocked) are treated as met and noted [ASSUME].
 
@@ -59,9 +60,11 @@ aspect, with locators), citation (the latest establishing reading; ties -> lates
 capture, then lowest evidence id, flagged), identifying (M2 link evidence / M3 activity:
 never used to cite state), contradicting (M4), inadmissible (M4 exclusions).
 """
+import csv
 import re
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 from audit.matching import _ts
 from audit.observation import leaves
@@ -69,25 +72,62 @@ from audit.state import _iso
 
 DELETE, REDACT, ANONYMIZE, RETAIN, FLOW = "DELETE", "REDACT", "ANONYMIZE", "RETAIN", "FLOW"
 
-# category -> (rule_id, required action, source, noted assumption about the rule condition)
-POLICY = {
-    "USER_PROFILE": ("rule_01", DELETE, "RULES", None),
-    "SECONDARY_IDENTIFIER": ("rule_02", DELETE, "RULES", None),
-    "SEARCH_INDEX_ENTRY": ("rule_03", DELETE, "RULES", None),
-    "CACHE_ENTRY": ("rule_04", DELETE, "RULES", None),
-    "SUPPORT_MESSAGE": ("rule_05", REDACT, "RULES", "CONDITION_ASSUMED_SHARED_CONTEXT"),
-    "SUPPORT_ATTACHMENT": ("rule_06", DELETE, "RULES", "CONDITION_ASSUMED_SOLE_SUBJECT"),
-    "ANALYTICS_PROFILE": ("rule_07", ANONYMIZE, "RULES", None),
-    "PRODUCT_TELEMETRY": ("rule_08", ANONYMIZE, "RULES", None),
-    "USER_EXPORT": ("rule_09", DELETE, "RULES", None),
-    "MARKETING_PROFILE": ("rule_10", DELETE, "RULES", None),
-    "EMAIL_DELIVERY_LOG": ("rule_11", REDACT, "RULES", None),
-    "SECURITY_AUDIT_LOG": ("rule_12", RETAIN, "RULES", None),
-    "LEGAL_HOLD_RECORD": ("rule_13", RETAIN, "RULES", None),
-    "BACKUP_ARCHIVE": ("rule_14", RETAIN, "RULES", "CONDITION_ASSUMED_RESTORE_BLOCKABLE"),
-    "ACCOUNT_TOMBSTONE": ("rule_15", REDACT, "RULES", None),
-    "DATA_FLOW": ("spec_6.5_no_recreating_sync", FLOW, "SPEC", None),
-}
+ACTIONS = (DELETE, REDACT, ANONYMIZE, RETAIN, FLOW)
+DEFAULT_POLICY_FILE = Path(__file__).with_name("deletion_rules.csv")
+POLICY_COLUMNS = ("rule_id", "data_category", "required_action")  # required
+POLICY_OPTIONAL_COLUMNS = ("condition", "source", "assumed_condition")  # condition is documentation only
+
+
+class PolicyError(ValueError):
+    """The policy file cannot be used; the message names the file and every problem row or field."""
+
+
+def load_policy(path):
+    """deletion_rules.csv -> {category: (rule_id, required action, source, noted assumption)}, in file order.
+
+    Every problem is collected and raised together as PolicyError; nothing is skipped or defaulted
+    except the optional columns (source -> "RULES", assumed_condition -> no note)."""
+    path = Path(path)
+    try:
+        with open(path, encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            header = reader.fieldnames or []
+            rows = list(reader)
+    except OSError as e:
+        raise PolicyError(f"{path}: cannot read policy file: {e.strerror or e}") from None
+    except UnicodeDecodeError as e:
+        raise PolicyError(f"{path}: not UTF-8 text ({e.reason} at byte {e.start})") from None
+    missing = [c for c in POLICY_COLUMNS if c not in header]
+    unknown = [c for c in header if c not in POLICY_COLUMNS + POLICY_OPTIONAL_COLUMNS]
+    if missing or unknown or len(set(header)) != len(header):
+        raise PolicyError(f"{path}: header {header}: " + "; ".join(
+            ([f"missing required column(s) {missing}"] if missing else []) +
+            ([f"unknown column(s) {unknown}"] if unknown else []) +
+            (["duplicate column names"] if len(set(header)) != len(header) else [])))
+    errors, policy, rule_rows = [], {}, {}
+    for n, r in enumerate(rows, 2):  # n = line number, the header is line 1
+        if None in r:
+            errors.append(f"{path}:{n}: more fields than the header")
+        rid, cat, act = ((r.get(c) or "").strip() for c in POLICY_COLUMNS)
+        bad = ([] if rid else ["empty rule_id"]) + ([] if cat else ["empty data_category"]) + (
+            [] if act in ACTIONS else [f"required_action {act!r} is not one of {list(ACTIONS)}"])
+        if rid in rule_rows:
+            bad.append(f"duplicate rule_id {rid!r} (first on line {rule_rows[rid]})")
+        if cat in policy:
+            bad.append(f"duplicate data_category {cat!r} (rule {policy[cat][0]})")
+        if bad:
+            errors.append(f"{path}:{n}: " + "; ".join(bad))
+            continue
+        rule_rows[rid] = n
+        policy[cat] = (rid, act, (r.get("source") or "").strip() or "RULES", (r.get("assumed_condition") or "").strip() or None)
+    gone = [c for c in REQUIRED_CATEGORIES if c not in policy]
+    if gone:
+        errors.append(f"{path}: no rule for required data_category {gone} (the engine assigns these categories itself)")
+    if errors:
+        raise PolicyError("\n".join(errors))
+    return policy
+
+
 COLLECTION_CATEGORY = {  # [ASSUME] name-based; only a resource's own collection is used
     "customer_profiles": "USER_PROFILE", "customer_search_documents": "SEARCH_INDEX_ENTRY",
     "support_conversations": "SUPPORT_MESSAGE", "ticket_attachments": "SUPPORT_ATTACHMENT",
@@ -107,6 +147,11 @@ REMEDIATION_FOR = {("REPORT_REMAINING_RECORD", DELETE): ("DELETE_RECORD", "ABSEN
 PREFIX_NAME_CATEGORY = {"tombstone": "ACCOUNT_TOMBSTONE", "marketing": "MARKETING_PROFILE"}  # [ASSUME] name-based
 WORKER_SUPPORT_CATEGORY = {"DELETE_RECORD": "SUPPORT_ATTACHMENT", "REDACT_RECORD": "SUPPORT_MESSAGE"}  # [DATA] source (6)
 ATTRIBUTABLE = ("EVIDENCE_LINKED", "ACTIVITY_MATCH_HIGH", "ACTIVITY_MATCH_MEDIUM")
+# Categories the engine derives from names, content and workflow claims: a policy must give each a rule.
+REQUIRED_CATEGORIES = tuple(sorted({*COLLECTION_CATEGORY.values(), *PREFIX_NAME_CATEGORY.values(), *WORKER_SUPPORT_CATEGORY.values()}))
+# category -> (rule_id, required action, source, noted assumption about the rule condition); the
+# default policy, loaded from audit/deletion_rules.csv (the only place it is written down).
+POLICY = load_policy(DEFAULT_POLICY_FILE)
 
 
 @dataclass
@@ -175,10 +220,12 @@ class Evaluation:
 
 class PolicyContext:
     """Corpus facts the policy needs: unanimous id-prefix categories, observation attributes
-    (retention fields) and file capture times (citation tie-breaks)."""
+    (retention fields) and file capture times (citation tie-breaks), and the policy matrix in use
+    (default POLICY; a custom one comes from load_policy)."""
 
-    def __init__(self, observations, manifest=None, conflict_gate=True, events=()):
+    def __init__(self, observations, manifest=None, conflict_gate=True, events=(), policy=None):
         self.conflict_gate = conflict_gate
+        self.policy = POLICY if policy is None else policy
         self.worker_ops = defaultdict(set)  # support_ resource -> categories implied by deletion-worker operations
         for ev in events:
             if ev.source_system == "deletion_worker" and ev.resource_id.startswith("support_") and ev.event_type in WORKER_SUPPORT_CATEGORY:
@@ -189,7 +236,7 @@ class PolicyContext:
         self.obs_by_resource = defaultdict(list)
         self.notes = {}  # (case_id, resource_id) -> note raised while judging
         for o in observations:
-            if o.resource_id and o.record_type in POLICY:
+            if o.resource_id and o.record_type in self.policy:
                 types[o.resource_id.rsplit("_", 1)[0]][o.record_type] += 1
             self.attrs[o.obs_id] = o.attrs
             if o.resource_id:
@@ -208,7 +255,7 @@ class PolicyContext:
 def category(a, ctx, admissible=False):
     """-> (category or None, basis). admissible=True uses only captures <= audit_at (M6.1 provenance)."""
     cats = a.categories_admissible if admissible else a.categories
-    explicit = sorted({c for c in cats if c in POLICY})
+    explicit = sorted({c for c in cats if c in ctx.policy})
     if len(explicit) > 1:
         return None, "CATEGORY_CONFLICTING"
     if explicit:
@@ -366,7 +413,7 @@ def evaluate(a, ctx):
         return Evaluation(a.case_id, a.resource_id, a.system, None, cat_basis, None, None,
                           "NOT_ATTRIBUTABLE" if att["attribution"] not in ATTRIBUTABLE else "INCONCLUSIVE",
                           cat_basis, "INCONCLUSIVE", att, [], None, notes=provenance)
-    rule_id, action, source, assumption = POLICY[cat]
+    rule_id, action, source, assumption = ctx.policy[cat]
     underlying, reason, violating, refs = _judge(a, action, cat, ctx)
     notes = ([assumption] if assumption else []) + ([ctx.notes[(a.case_id, a.resource_id)]] if (a.case_id, a.resource_id) in ctx.notes else [])
     notes += provenance
@@ -407,9 +454,9 @@ def evaluate(a, ctx):
     return ev
 
 
-def plan(finding):
+def plan(finding, policy=None):
     """The single remediation permitted for one finding (raises on a non-permitted pairing)."""
-    _, action, _, _ = POLICY[finding.category]
+    _, action, _, _ = (POLICY if policy is None else policy)[finding.category]
     op, target = REMEDIATION_FOR[(finding.finding_type, action)]
     caveats = list(finding.notes)
     if finding.conclusion == "inferred":
@@ -426,5 +473,5 @@ def run(assessments, ctx):
     """-> (evaluations, findings, remediations), deterministic (assessment order)."""
     evaluations = [evaluate(a, ctx) for a in assessments]
     findings = [e.finding for e in evaluations if e.finding]
-    remediations = [plan(f) for f in findings]
+    remediations = [plan(f, ctx.policy) for f in findings]
     return evaluations, findings, remediations

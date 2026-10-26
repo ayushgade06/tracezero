@@ -58,9 +58,8 @@ class AssemblyError(ValueError):
     """A required step field is missing; raised instead of silently dropping the step."""
 
 
-def required_state(category):
-    """The state the policy requires for a category (after-the-fix check of an unresolved resource)."""
-    _, action, _, _ = policy.POLICY[category]
+def required_state(category, action):
+    """The state the policy requires for a category under its required action (after-the-fix check of an unresolved resource)."""
     if action == policy.RETAIN:
         return "BLOCKED" if category == "BACKUP_ARCHIVE" else "PRESENT"
     return {policy.DELETE: "ABSENT", policy.REDACT: "REDACTED", policy.ANONYMIZE: "ANONYMIZED", policy.FLOW: "DISABLED"}[action]
@@ -170,7 +169,7 @@ def checks(case_id, evaluations, remediation_of, system=lambda e: e.system):
         elif e.outcome == "COMPLIANT":
             state = COMPLIANT_STATE[e.reason]
         elif e.outcome == "INCONCLUSIVE" and e.category is not None:
-            state = required_state(e.category)
+            state = required_state(e.category, e.action)
         else:
             continue  # NOT_ATTRIBUTABLE, or INCONCLUSIVE with unknown/conflicting category: no stated treatment
         out.append(_step(case_id, "VERIFICATION", system(e), e.resource_id, VERIFY_STATE[state], ""))

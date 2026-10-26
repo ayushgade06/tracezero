@@ -1,6 +1,7 @@
 """TraceZero - deletion-audit CLI.
 
 Usage: python code/main.py [--dataset dataset] [--requests dataset/deletion_requests.csv] [--out output.csv]
+                           [--policy deletion_rules.csv]
 
 Runs M1-M5 once over the whole dataset (sample and evaluation requests are matched jointly, see
 audit/pipeline.py), then assembles each requested case's deletion_status and steps_json from the M5
@@ -14,7 +15,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from audit import final, intent, llm_intent, pipeline
+from audit import final, intent, llm_intent, pipeline, policy
 from audit.matching import _ts
 from audit.output import write_output
 from audit.state import _iso
@@ -48,8 +49,8 @@ def audit_cases(requests, result):
     return out
 
 
-def run(dataset, requests_path, out_path):
-    result = pipeline.run(dataset)
+def run(dataset, requests_path, out_path, policy_matrix=None):
+    result = pipeline.run(dataset, policy_matrix=policy_matrix)
     rows = audit_cases(pipeline.read_requests(requests_path), result)
     write_output([(c, s, steps) for c, s, steps, _ in rows], out_path)
     return rows
@@ -60,14 +61,20 @@ def main(argv=None):
     p.add_argument("--dataset", default=ROOT / "dataset", type=Path)
     p.add_argument("--requests", default=None, type=Path, help="default: <dataset>/deletion_requests.csv")
     p.add_argument("--out", default=ROOT / "output.csv", type=Path)
+    p.add_argument("--policy", default=None, type=Path,
+                   help="deletion policy CSV (default: code/audit/deletion_rules.csv; format in docs/CONFIGURATION.md)")
     p.add_argument("--refresh-intent-cache", action="store_true",
                    help="classify uncached request texts with Claude first (needs ANTHROPIC_API_KEY)")
     a = p.parse_args(argv)
+    try:  # a custom policy is checked before any work, and never falls back to the default
+        matrix = policy.load_policy(a.policy) if a.policy else None
+    except policy.PolicyError as e:
+        raise SystemExit(f"invalid policy:\n{e}")
     if a.refresh_intent_cache:
         texts = [r["request_text"] for name in pipeline.REQUEST_FILES
                  for r in pipeline.read_requests(a.dataset / name)]
         print(f"intent cache: {llm_intent.refresh(texts)} Claude calls; usage {llm_intent.usage()}")
-    rows = run(a.dataset, a.requests or a.dataset / "deletion_requests.csv", a.out)
+    rows = run(a.dataset, a.requests or a.dataset / "deletion_requests.csv", a.out, matrix)
     print(f"wrote {len(rows)} rows to {a.out}; status={dict(Counter(r[1] for r in rows))}; "
           f"basis={dict(Counter(r[3]['basis'] for r in rows))}; steps={sum(len(r[2]) for r in rows)}")
 

@@ -17,8 +17,9 @@ def read_requests(path):
         return list(csv.DictReader(f))
 
 
-def run(dataset, use_ocr=True, conflict_gate=True):
-    """-> dict with the intermediate results of every milestone (same keys as the M6 report)."""
+def run(dataset, use_ocr=True, conflict_gate=True, policy_matrix=None):
+    """-> dict with the intermediate results of every milestone (same keys as the M6 report).
+    policy_matrix: a matrix from policy.load_policy (default: policy.POLICY)."""
     dataset = Path(dataset)
     manifest, obs, diags = ingest.ingest(dataset, use_ocr=use_ocr)
     index = identity.load_identities(dataset)
@@ -28,6 +29,6 @@ def run(dataset, use_ocr=True, conflict_gate=True):
     events = matching.load_events(dataset)
     reqs, _, dec = matching.match(rows, events, links, index)
     A = state.reconstruct(reqs, dec, obs, links, res, events)
-    E, F, R = policy.run(A, policy.PolicyContext(obs, manifest, conflict_gate=conflict_gate, events=events))
+    E, F, R = policy.run(A, policy.PolicyContext(obs, manifest, conflict_gate=conflict_gate, events=events, policy=policy_matrix))
     return {"manifest": manifest, "obs": obs, "diags": diags, "links": links, "res": res, "rows": rows,
             "dec": dec, "A": A, "E": E, "F": F, "R": R}
