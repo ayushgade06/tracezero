@@ -116,7 +116,12 @@ class PolicyFileTests(unittest.TestCase):
         self.bad(DEFAULT_TEXT.replace("rule_04,CACHE_ENTRY", "rule_03,CACHE_ENTRY"), ":5:", "duplicate rule_id 'rule_03' (first on line 4)")
 
     def test_duplicate_category(self):
-        self.bad(DEFAULT_TEXT + "rule_99,USER_PROFILE,Always,DELETE,RULES,\n", ":18:", "duplicate data_category 'USER_PROFILE'")
+        self.bad(DEFAULT_TEXT + "rule_99,USER_PROFILE,Always,DELETE,RULES,\n", ":18:", "duplicate data_category 'USER_PROFILE' (first on line 2)")
+
+    def test_duplicates_of_rejected_rows_are_still_reported(self):
+        self.bad("rule_id,data_category,required_action\nrule_01,USER_PROFILE,PURGE\nrule_01,USER_PROFILE,DELETE\n",
+                 ":2: required_action 'PURGE'",
+                 ":3: duplicate rule_id 'rule_01' (first on line 2); duplicate data_category 'USER_PROFILE' (first on line 2)")
 
     def test_missing_required_rule(self):
         self.bad(DEFAULT_TEXT.replace("rule_01,USER_PROFILE,Always,DELETE,RULES,\n", ""), "no rule for required data_category ['USER_PROFILE']")

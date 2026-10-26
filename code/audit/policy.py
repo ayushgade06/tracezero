@@ -104,7 +104,7 @@ def load_policy(path):
             ([f"missing required column(s) {missing}"] if missing else []) +
             ([f"unknown column(s) {unknown}"] if unknown else []) +
             (["duplicate column names"] if len(set(header)) != len(header) else [])))
-    errors, policy, rule_rows = [], {}, {}
+    errors, policy, rule_rows, cat_rows = [], {}, {}, {}
     for n, r in enumerate(rows, 2):  # n = line number, the header is line 1
         if None in r:
             errors.append(f"{path}:{n}: more fields than the header")
@@ -113,12 +113,15 @@ def load_policy(path):
             [] if act in ACTIONS else [f"required_action {act!r} is not one of {list(ACTIONS)}"])
         if rid in rule_rows:
             bad.append(f"duplicate rule_id {rid!r} (first on line {rule_rows[rid]})")
-        if cat in policy:
-            bad.append(f"duplicate data_category {cat!r} (rule {policy[cat][0]})")
+        elif rid:
+            rule_rows[rid] = n  # also for a row rejected below, so a later duplicate is still reported
+        if cat in cat_rows:
+            bad.append(f"duplicate data_category {cat!r} (first on line {cat_rows[cat]})")
+        elif cat:
+            cat_rows[cat] = n
         if bad:
             errors.append(f"{path}:{n}: " + "; ".join(bad))
             continue
-        rule_rows[rid] = n
         policy[cat] = (rid, act, (r.get("source") or "").strip() or "RULES", (r.get("assumed_condition") or "").strip() or None)
     gone = [c for c in REQUIRED_CATEGORIES if c not in policy]
     if gone:
