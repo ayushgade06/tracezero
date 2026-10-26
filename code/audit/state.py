@@ -85,6 +85,7 @@ from functools import lru_cache
 
 from audit.matching import CONTEMPORANEOUS, _ts
 from audit.observation import NULLS, RESOURCE_RE, leaves
+from audit.settings import DEFAULT
 
 ASPECTS = ("existence", "exposure", "flow", "restore")
 _EXPLICIT_SYSTEM = ("system", "origin_system", "context.data_store", "json_path", "record_json.system")
@@ -351,7 +352,8 @@ def _snapshot_time(o):
 class StateIndex:
     """Readings, scopes and claims precomputed once from M1/M2 outputs and activity."""
 
-    def __init__(self, observations, links, events):
+    def __init__(self, observations, links, events, point_in_time=DEFAULT.point_in_time_context):
+        self.point_in_time = point_in_time  # R4e dump header (context key, value) or None (settings)
         self.users_by_obs = defaultdict(set)
         self.unregistered_obs = set()
         self.file_users = defaultdict(set)
@@ -458,7 +460,8 @@ class StateIndex:
             for sib in groups.values():
                 listed = {t.locator["table"]: {r.resource_id for r in rows.get((fid, t.locator["table"]), [])} for t in sib}
                 union = set().union(*listed.values())
-                if all(t.context.get("ghost_data_still_exists") == "point-in-time database snapshot" for t in sib):
+                pit = self.point_in_time
+                if pit and all(t.context.get(pit[0]) == pit[1] for t in sib):
                     mixed = all("origin_system" in (t.attrs.get("columns") or ()) for t in sib)
                     cover = None if mixed else {self.system(r)[0] for r in union}
                     if mixed or (len(cover) == 1 and None not in cover):
@@ -721,9 +724,9 @@ def associations(req, decision, links, resources):
     return out, unresolved
 
 
-def reconstruct(requests, decisions, observations, links, resources, events):
+def reconstruct(requests, decisions, observations, links, resources, events, settings=DEFAULT):
     """-> list of Assessment for every deletion request's associated resources (deterministic order)."""
-    si = StateIndex(observations, links, events)
+    si = StateIndex(observations, links, events, settings.point_in_time_context)
     out = []
     for req in requests:
         if req.family != "account_deletion":

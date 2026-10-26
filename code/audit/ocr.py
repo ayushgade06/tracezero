@@ -36,6 +36,7 @@ import struct
 from pathlib import Path
 
 from audit.observation import EMAIL_RE, RESOURCE_RE, USER_RE, Observation
+from audit.settings import DEFAULT
 
 ENGINE, ENGINE_VERSION = "rapidocr_onnxruntime", "1.4.4"
 MODELS = {  # bundled with the 1.4.4 wheel; sha256 recorded from the installed package
@@ -163,10 +164,11 @@ def _bands(boxes, tol=10):
     return [sorted(band, key=lambda b: b["x0"]) for band in bands]
 
 
-def layout(raw, width):
-    """-> list of units {region, row, boxes, title, pairs/cells} on the shared template."""
+def layout(raw, width, marker=DEFAULT.screenshot_template_marker):
+    """-> list of units {region, row, boxes, title, pairs/cells} on the shared template, which a screen
+    matches when a sidebar box contains `marker` (settings.screenshot_template_marker; None: never)."""
     boxes = [b for b in _boxes(raw) if b["x0"] >= SIDEBAR_X]
-    if not any(b["x0"] < SIDEBAR_X and "Northstar" in b["text"] for b in _boxes(raw)):
+    if marker is None or not any(b["x0"] < SIDEBAR_X and marker in b["text"] for b in _boxes(raw)):
         return [{"region": "unrecognised", "row": 0, "boxes": boxes}]
     units = []
     top = [b for b in boxes if b["cy"] < TOPBAR_Y and 0.2 * width < b["x0"] < 0.7 * width]
@@ -264,10 +266,10 @@ def _unit_resource(unit, toks):
     return []
 
 
-def image_observations(meta, raw, aliases, width, source):
+def image_observations(meta, raw, aliases, width, source, marker=DEFAULT.screenshot_template_marker):
     """Units -> Observations + diagnostics for one screenshot (deterministic order)."""
     obs, diags = [], []
-    units = layout(raw, width)
+    units = layout(raw, width, marker)
     if units and units[0]["region"] == "unrecognised":
         diags.append(("warning", "UNRECOGNISED_LAYOUT", "screen does not match the admin-console template"))
     header_rid = None
@@ -381,7 +383,7 @@ def _capture_disputes(obs, captured_at):
     return out
 
 
-def parse_image(meta, dataset, aliases, refresh=False, cache_dir=CACHE_DIR):
+def parse_image(meta, dataset, aliases, refresh=False, cache_dir=CACHE_DIR, marker=DEFAULT.screenshot_template_marker):
     """Ingest entry point for one PNG: (observations, diagnostics as M1 dicts)."""
     loc = {"file_path": meta["file_path"]}
     boxes, source, d = load_boxes(meta, dataset, refresh, cache_dir)
@@ -389,6 +391,6 @@ def parse_image(meta, dataset, aliases, refresh=False, cache_dir=CACHE_DIR):
     if boxes is None:
         return [], diags
     width = png_width(Path(dataset) / meta["file_path"])
-    obs, d2 = image_observations(meta, boxes, aliases, width, source)
+    obs, d2 = image_observations(meta, boxes, aliases, width, source, marker)
     diags += [{"file_id": meta["file_id"], "locator": loc, "severity": s, "reason": f"{code}: {msg}", "excerpt": ""} for s, code, msg in d2]
     return obs, diags

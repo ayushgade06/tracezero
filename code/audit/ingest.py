@@ -11,6 +11,7 @@ from pathlib import Path
 
 from audit import ocr, parsers
 from audit.observation import ID_TOKEN_RE, RESOURCE_RE, USER_RE, parse_ts
+from audit.settings import DEFAULT
 
 FORMATS = {".sql": "sql", ".json": "json", ".log": "log", ".txt": "txt", ".pdf": "pdf", ".png": "image"}
 
@@ -51,7 +52,7 @@ def _has_ocr_cache(meta):
     return (ocr.CACHE_DIR / f"{meta['file_id']}.json").exists()
 
 
-def parse_file(meta, dataset, use_ocr=True, aliases=None):
+def parse_file(meta, dataset, use_ocr=True, aliases=None, settings=DEFAULT):
     path = Path(dataset) / meta["file_path"]
     loc = {"file_path": meta["file_path"]}
     if not path.exists():
@@ -65,7 +66,8 @@ def parse_file(meta, dataset, use_ocr=True, aliases=None):
         if fmt == "image":
             if not use_ocr:
                 return [], [parsers._diag(meta, loc, "image not parsed (OCR disabled)", severity="info")]
-            return ocr.parse_image(meta, dataset, aliases if aliases is not None else ocr.load_aliases(dataset))
+            return ocr.parse_image(meta, dataset, aliases if aliases is not None else ocr.load_aliases(dataset),
+                                   marker=settings.screenshot_template_marker)
         parse = {"sql": parsers.parse_sql, "json": parsers.parse_json, "log": parsers.parse_log, "txt": parsers.parse_txt}.get(fmt)
         if parse is None:
             return [], [parsers._diag(meta, loc, "unsupported file format", severity="error")]
@@ -74,14 +76,15 @@ def parse_file(meta, dataset, use_ocr=True, aliases=None):
         return [], [parsers._diag(meta, loc, f"parser error: {type(e).__name__}: {e}", severity="error")]
 
 
-def ingest(dataset, use_ocr=True):
+def ingest(dataset, use_ocr=True, settings=DEFAULT):
     """-> (manifest, observations, diagnostics), all in manifest/file order.
-    use_ocr=False reproduces the pre-M6 behaviour (screenshots reported, not parsed)."""
+    use_ocr=False reproduces the pre-M6 behaviour (screenshots reported, not parsed).
+    settings: dataset conventions (audit/settings.py)."""
     manifest = load_manifest(dataset)
     aliases = ocr.load_aliases(dataset) if use_ocr else {}
     observations, diagnostics = [], []
     for meta in manifest:
-        o, d = parse_file(meta, dataset, use_ocr, aliases)
+        o, d = parse_file(meta, dataset, use_ocr, aliases, settings)
         observations += o
         diagnostics += d
     return manifest, observations, diagnostics

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from audit import discovery, identity, ingest, inputs, matching, policy, state
 from audit.inputs import InputError
+from audit.settings import DEFAULT
 
 REQUEST_FILES = ("sample_deletion_requests.csv", "deletion_requests.csv")
 
@@ -31,20 +32,21 @@ def read_requests(path):
         return list(csv.DictReader(f))
 
 
-def run(dataset, use_ocr=True, conflict_gate=True, policy_matrix=None):
+def run(dataset, use_ocr=True, conflict_gate=True, policy_matrix=None, settings=DEFAULT):
     """-> dict with the intermediate results of every milestone (same keys as the M6 report).
-    policy_matrix: a matrix from policy.load_policy (default: policy.POLICY)."""
+    policy_matrix: a matrix from policy.load_policy (default: policy.POLICY); settings: from
+    settings.load_settings (default: the reference dataset's conventions)."""
     dataset = Path(dataset)
     requests = request_files(dataset)
     inputs.validate(dataset, requests)
-    manifest, obs, diags = ingest.ingest(dataset, use_ocr=use_ocr)
+    manifest, obs, diags = ingest.ingest(dataset, use_ocr=use_ocr, settings=settings)
     index = identity.load_identities(dataset)
     links = discovery.build_links(obs, index, discovery.load_catalog_links(dataset))
     res = discovery.classify_resources(obs, links)
     rows = [r for path in requests for r in read_requests(path)]
     events = matching.load_events(dataset)
     reqs, _, dec = matching.match(rows, events, links, index)
-    A = state.reconstruct(reqs, dec, obs, links, res, events)
+    A = state.reconstruct(reqs, dec, obs, links, res, events, settings)
     E, F, R = policy.run(A, policy.PolicyContext(obs, manifest, conflict_gate=conflict_gate, events=events, policy=policy_matrix))
     return {"manifest": manifest, "obs": obs, "diags": diags, "links": links, "res": res, "rows": rows,
             "dec": dec, "A": A, "E": E, "F": F, "R": R}

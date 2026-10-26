@@ -96,3 +96,38 @@ rows. At most 20 row problems are listed per file; the rest are counted.
 Not checked up front, on purpose: evidence files named in the manifest, and manifest `captured_at`
 values. A missing or unparseable one is already reported as a per-file diagnostic, and the audit goes on
 without that file, as before.
+
+## Dataset-convention settings (`--settings`)
+
+```bash
+tracezero --dataset <dir> --settings settings.json
+```
+
+Two evidence-format conventions of the reference dataset are named settings (`code/audit/settings.py`).
+A settings file is a JSON object holding any subset of the keys below. A key you leave out keeps its
+default, and the defaults reproduce the behaviour from before P2.
+
+```json
+{
+  "sql_point_in_time_header": {"label": "Ghost Data Still Exists", "value": "point-in-time database snapshot"},
+  "screenshot_template_marker": "Northstar"
+}
+```
+
+| Setting | Default | Effect |
+|---|---|---|
+| `sql_point_in_time_header` | label `Ghost Data Still Exists`, value `point-in-time database snapshot` | A SQL dump whose leading comment header contains `-- <label>: <value>` is a point-in-time snapshot. A resource missing from every copy of one of its tables is then read as absent at the capture time (rule R4e, `state.py`). The label matches case-insensitively, ignoring punctuation; the value must match exactly. `null` turns R4e off. |
+| `screenshot_template_marker` | `Northstar` | A screenshot is parsed with the admin-console template (`ocr.layout`) only if a box in its left sidebar contains this text. Otherwise it is reported as `UNRECOGNISED_LAYOUT` and contributes context only, never a record or a state. `null` turns screenshot parsing off. |
+
+The template's geometry (pixel bands for the top bar, header, KPI cards and content in `ocr.py`) describes
+one specific admin-console layout and is not a setting. Point the marker at a different console only if
+its screens use that same layout.
+
+The file is validated before any evidence is read. Unknown keys, wrong types, an empty marker, an empty
+header value, or a label that a dump header line can never produce (it must start with a letter and use
+only letters, spaces and underscores, at most 41 characters) are reported with the file name. The run then
+stops with exit code 1 and doesn't fall back to the defaults.
+
+For reference, on the reference dataset: `{"sql_point_in_time_header": null}` turns 20 `COMPLETE` rows
+into `INCOMPLETE`, and `{"screenshot_template_marker": null}` drops 15 screenshot-derived steps (the same
+output as running without the OCR cache).
